@@ -1,0 +1,475 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- ============================================================
+  お絵かき招金 公式LP
+  - {{...}} は引き継ぎ書のプレースホルダ。確定後に一括置換すること
+  - [SCREENSHOT] [VIDEO] コメントの箇所に実素材を差し込むこと
+============================================================ -->
+
+<title>VRM対応の無料ブラウザ3Dポーザー｜お絵かき招金</title>
+<meta name="description" content="インストール不要、ブラウザで動く絵描き向け無料3Dポーザー。マネキンとVRMモデルにポーズを付けて、PNG書き出しでそのまま作画資料に。完全ローカル動作でモデルデータが外部に送信されない設計です。">
+<link rel="canonical" href="{{LP_URL}}">
+
+<!-- OGP -->
+<meta property="og:type" content="website">
+<meta property="og:title" content="お絵かき招金｜VRM対応の無料ブラウザ3Dポーザー">
+<meta property="og:description" content="インストール不要・登録不要。マネキンとVRMにポーズを付けてPNG書き出し。絵描きのためのポーズ資料作成ツール。">
+<meta property="og:url" content="{{LP_URL}}">
+<meta property="og:image" content="{{OGP_IMAGE_URL}}">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:site" content="@seihekijikkou">
+
+<!-- 構造化データ -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "SoftwareApplication",
+  "name": "お絵かき招金",
+  "alternateName": "おえかきまねきん",
+  "applicationCategory": "DesignApplication",
+  "operatingSystem": "Windows, macOS (Chrome / Edge)",
+  "offers": { "@type": "Offer", "price": "0", "priceCurrency": "JPY" },
+  "description": "絵描き向けの無料ブラウザ3Dポーザー。マネキンとVRMモデルにポーズを付けてPNG書き出しできる。完全ローカル動作。",
+  "url": "{{LP_URL}}",
+  "author": { "@type": "Person", "name": "せいじつ" }
+}
+</script>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "商用利用はできますか？",
+      "acceptedAnswer": { "@type": "Answer", "text": "ツール自体は商用・非商用を問わず無料で利用できます。VRMモデルを読み込んで使う場合、そのモデルの利用条件はモデル側の規約に従ってください。マネキン（内蔵モデル）にはこうした制限はありません。" }
+    },
+    {
+      "@type": "Question",
+      "name": "書き出した画像をトレースして作品に使えますか？",
+      "acceptedAnswer": { "@type": "Answer", "text": "はい。マネキンで書き出した画像のトレース・加工・下絵利用に制限はなく、成果物の商用利用も自由です。VRMモデルを使った場合はモデル側の利用条件をご確認ください。" }
+    },
+    {
+      "@type": "Question",
+      "name": "クレジット表記は必要ですか？",
+      "acceptedAnswer": { "@type": "Answer", "text": "不要です。書いてくださったら作者が少し喜びます。" }
+    },
+    {
+      "@type": "Question",
+      "name": "スマホやタブレットで使えますか？",
+      "acceptedAnswer": { "@type": "Answer", "text": "対象外です。PCの最新ブラウザ（Chrome / Edge）でご利用ください。" }
+    }
+  ]
+}
+</script>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Shippori+Mincho+B1:wght@600;800&family=Zen+Kaku+Gothic+New:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+:root{
+  --paper:#F7F7F3;        /* コピー用紙の白（クールホワイト） */
+  --ink:#23221E;          /* インクの黒 */
+  --blue:#4E8FBF;         /* 下書きの水色（ノンフォトブルー濃） */
+  --blue-wash:#DCEBF4;    /* 水色の淡いウォッシュ */
+  --blue-faint:#C3D9E8;   /* グリッド線用 */
+  --graphite:#807E77;     /* 鉛筆グレー */
+  --line:#D8D6CF;
+  --display:'Shippori Mincho B1',serif;
+  --body:'Zen Kaku Gothic New',sans-serif;
+  --mono:'IBM Plex Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
+body{
+  font-family:var(--body);
+  background:var(--paper);
+  color:var(--ink);
+  line-height:1.9;
+  font-size:16px;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:var(--blue);text-underline-offset:3px}
+:focus-visible{outline:3px solid var(--blue);outline-offset:3px;border-radius:2px}
+img,video{max-width:100%;display:block}
+
+.wrap{max-width:960px;margin:0 auto;padding:0 24px}
+
+/* ---------- header ---------- */
+header{
+  position:sticky;top:0;z-index:10;
+  background:color-mix(in srgb,var(--paper) 92%,transparent);
+  backdrop-filter:blur(6px);
+  border-bottom:1px solid var(--line);
+}
+.nav{display:flex;align-items:center;justify-content:space-between;height:60px}
+.brand{font-family:var(--display);font-weight:800;font-size:1.1rem;color:var(--ink);text-decoration:none;letter-spacing:.06em}
+.brand small{font-family:var(--mono);font-weight:400;font-size:.65rem;color:var(--graphite);margin-left:.6em;letter-spacing:.1em}
+.nav-links{display:flex;gap:22px;align-items:center;font-size:.88rem}
+.nav-links a{color:var(--ink);text-decoration:none}
+.nav-links a:hover{color:var(--blue)}
+.btn{
+  display:inline-block;background:var(--ink);color:var(--paper);
+  text-decoration:none;font-weight:700;letter-spacing:.05em;
+  padding:.55em 1.4em;border-radius:2px;border:1.5px solid var(--ink);
+  transition:background .15s,color .15s;
+}
+.btn:hover{background:var(--blue);border-color:var(--blue);color:#fff}
+.btn.big{font-size:1.05rem;padding:.8em 2.2em}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn.ghost:hover{background:var(--blue-wash);color:var(--ink)}
+@media(max-width:640px){.nav-links a:not(.btn){display:none}}
+
+/* ---------- hero ---------- */
+.hero{
+  position:relative;overflow:hidden;
+  padding:72px 0 64px;
+  border-bottom:1px solid var(--line);
+}
+/* ビューポートのグリッド床＝下書き用紙のモチーフ */
+.hero::before{
+  content:"";position:absolute;inset:auto 0 0 0;height:55%;
+  background:
+    linear-gradient(to top,transparent,var(--paper) 92%),
+    repeating-linear-gradient(90deg,var(--blue-faint) 0 1px,transparent 1px 56px),
+    repeating-linear-gradient(0deg,var(--blue-faint) 0 1px,transparent 1px 56px);
+  transform:perspective(480px) rotateX(58deg) scale(1.6);
+  transform-origin:bottom center;
+  opacity:.55;pointer-events:none;
+}
+.hero .wrap{position:relative}
+.eyebrow{
+  font-family:var(--mono);font-size:.78rem;letter-spacing:.18em;
+  color:var(--blue);margin-bottom:18px;
+}
+h1{
+  font-family:var(--display);font-weight:800;
+  font-size:clamp(1.7rem,4.6vw,2.9rem);
+  line-height:1.5;letter-spacing:.03em;margin-bottom:10px;
+}
+/* 署名要素：青鉛筆のラフな下線 */
+.u{
+  background:linear-gradient(transparent 68%,var(--blue-wash) 68% 94%,transparent 94%);
+  box-decoration-break:clone;-webkit-box-decoration-break:clone;
+}
+.hero-sub{color:var(--graphite);font-size:1.02rem;max-width:36em;margin-bottom:30px}
+.hero-cta{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:14px}
+.hero-note{font-size:.8rem;color:var(--graphite)}
+.hero-demo{
+  margin-top:44px;border:1.5px solid var(--ink);border-radius:3px;
+  background:#fff;box-shadow:6px 6px 0 var(--blue-wash);
+  aspect-ratio:16/9;display:grid;place-items:center;
+  color:var(--graphite);font-family:var(--mono);font-size:.85rem;
+}
+/* [VIDEO] .hero-demo の中身を実演動画(<video autoplay muted loop playsinline>)に差し替え。
+   内容：ポーズ付け→輪郭線表示→PNG書き出し の20秒ループ -->
+
+/* ---------- sections ---------- */
+section{padding:72px 0;border-bottom:1px solid var(--line)}
+.sec-head{display:flex;align-items:baseline;gap:18px;margin-bottom:38px}
+.sec-label{
+  writing-mode:vertical-rl;font-family:var(--display);font-weight:600;
+  font-size:.8rem;letter-spacing:.3em;color:var(--blue);
+  border-left:2px solid var(--blue);padding-left:8px;height:5.2em;flex:none;
+}
+h2{font-family:var(--display);font-weight:800;font-size:clamp(1.35rem,3vw,1.8rem);letter-spacing:.04em;line-height:1.6}
+.lead{color:var(--graphite);max-width:38em;margin-bottom:8px}
+
+/* flow */
+.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;margin-top:34px}
+.flow-item{border:1px solid var(--line);background:#fff;border-radius:3px;padding:22px}
+.flow-item .num{font-family:var(--mono);color:var(--blue);font-size:.8rem;letter-spacing:.15em;margin-bottom:8px}
+.flow-item h3{font-size:1.02rem;font-weight:700;margin-bottom:8px}
+.flow-item p{font-size:.9rem;color:var(--graphite);line-height:1.8}
+.flow-shot{
+  margin-top:14px;aspect-ratio:4/3;background:var(--blue-wash);
+  border:1px dashed var(--blue-faint);border-radius:2px;
+  display:grid;place-items:center;font-family:var(--mono);font-size:.72rem;color:var(--graphite);
+}
+/* [SCREENSHOT] .flow-shot ×3：①ギズモでポーズ操作中 ②PNG書き出しダイアログ ③書き出し画像を下絵にした作画例 */
+@media(max-width:720px){.flow{grid-template-columns:1fr}}
+
+/* vrm */
+.vrm-grid{display:grid;grid-template-columns:1.1fr .9fr;gap:38px;align-items:center;margin-top:10px}
+.vrm-shot{
+  aspect-ratio:4/3;background:#fff;border:1.5px solid var(--ink);border-radius:3px;
+  box-shadow:6px 6px 0 var(--blue-wash);
+  display:grid;place-items:center;font-family:var(--mono);font-size:.78rem;color:var(--graphite);
+}
+/* [SCREENSHOT] .vrm-shot：自作VRM（宣伝利用可のモデル）にポーズを付けた画面 */
+.vrm-points{list-style:none;display:grid;gap:14px}
+.vrm-points li{padding-left:1.4em;position:relative;font-size:.95rem}
+.vrm-points li::before{content:"◆";position:absolute;left:0;color:var(--blue);font-size:.7em;top:.5em}
+@media(max-width:720px){.vrm-grid{grid-template-columns:1fr}}
+
+/* features */
+.feat{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:var(--line);border:1px solid var(--line);margin-top:8px}
+.feat-item{background:var(--paper);padding:22px 18px}
+.feat-item h3{font-size:.95rem;font-weight:700;margin-bottom:6px}
+.feat-item p{font-size:.82rem;color:var(--graphite);line-height:1.75}
+.feat-item .tag{font-family:var(--mono);font-size:.62rem;color:var(--blue);letter-spacing:.12em;display:block;margin-bottom:6px}
+@media(max-width:900px){.feat{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.feat{grid-template-columns:1fr}}
+
+/* trust */
+.trust{display:grid;grid-template-columns:repeat(4,1fr);gap:22px;margin-top:8px}
+.trust-item{border-top:2px solid var(--blue);padding-top:14px}
+.trust-item h3{font-family:var(--display);font-weight:800;font-size:1.05rem;margin-bottom:6px}
+.trust-item p{font-size:.85rem;color:var(--graphite);line-height:1.8}
+@media(max-width:820px){.trust{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:520px){.trust{grid-template-columns:1fr}}
+
+/* faq */
+.faq details{border:1px solid var(--line);background:#fff;border-radius:3px;margin-bottom:12px}
+.faq summary{
+  cursor:pointer;list-style:none;padding:16px 20px;font-weight:700;font-size:.95rem;
+  display:flex;gap:12px;align-items:baseline;
+}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::before{content:"Q";font-family:var(--display);color:var(--blue);font-weight:800}
+.faq details[open] summary{border-bottom:1px solid var(--line)}
+.faq .a{padding:16px 20px;font-size:.92rem;color:var(--ink)}
+.faq .a p+p{margin-top:.6em}
+
+/* roadmap */
+.roadmap{list-style:none;display:grid;gap:12px;margin-top:8px}
+.roadmap li{display:flex;gap:16px;align-items:baseline;font-size:.95rem}
+.roadmap .ver{font-family:var(--mono);flex:none;font-size:.8rem;color:var(--blue);letter-spacing:.08em;border:1px solid var(--blue-faint);border-radius:2px;padding:.1em .6em;background:#fff}
+.roadmap .dev{color:var(--graphite);font-size:.82rem}
+
+/* author */
+.author{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+.author p{max-width:34em;font-size:.95rem}
+.author .links{display:flex;gap:16px;font-size:.9rem;margin-top:10px}
+
+/* cta band */
+.cta-band{text-align:center;padding:84px 0;border-bottom:none}
+.cta-band h2{margin-bottom:10px}
+.cta-band p{color:var(--graphite);margin-bottom:28px}
+
+/* footer */
+footer{background:var(--ink);color:#B9B7B0;font-size:.8rem;padding:44px 0 56px}
+footer .wrap{display:grid;gap:18px}
+footer a{color:#D8D6CF}
+.disclaimer{line-height:1.9;max-width:46em}
+.copyright{font-family:var(--mono);letter-spacing:.08em;font-size:.72rem}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top">お絵かき招金<small>OEKAKI MANEKIN</small></a>
+    <nav class="nav-links" aria-label="ページ内リンク">
+      <a href="#features">機能</a>
+      <a href="#faq">利用条件</a>
+      <a href="#roadmap">更新予定</a>
+      <a class="btn" href="{{TOOL_URL}}">今すぐ使う</a>
+    </nav>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ================= HERO ================= -->
+  <div class="hero">
+    <div class="wrap">
+      <p class="eyebrow">FREE / NO INSTALL / NO SIGN-UP</p>
+      <h1>ブラウザで動く、<br><span class="u">絵描きのための無料3Dポーザー</span></h1>
+      <p class="hero-sub">マネキンと、あなたのVRMモデルに好きなポーズを。PNGで書き出して、そのまま作画資料・下絵に使えます。インストールも登録もいりません。</p>
+      <div class="hero-cta">
+        <a class="btn big" href="{{TOOL_URL}}">今すぐ使う（無料）</a>
+        <a class="btn big ghost" href="#flow">できることを見る</a>
+      </div>
+      <p class="hero-note">対応環境：PCの最新Chrome / Edge。スマホは対象外です。</p>
+      <div class="hero-demo" role="img" aria-label="お絵かき招金の操作デモ動画">
+        [VIDEO] ポーズ付け→輪郭線→PNG書き出しの実演動画（20秒ループ）を配置
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= FLOW ================= -->
+  <section id="flow">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-label" aria-hidden="true">使い方</span>
+        <h2>ポーズを付けて、書き出して、描くだけ。</h2>
+      </div>
+      <p class="lead">3Dソフトの知識はいりません。関節をつまんで動かす直感操作で、欲しいアングルのポーズ資料が作れます。</p>
+      <div class="flow">
+        <div class="flow-item">
+          <p class="num">STEP 01</p>
+          <h3>ポーズを付ける</h3>
+          <p>関節をクリックして回すだけ。IKで手足を引っ張る操作や、しゃがみ・指のプリセットも。可動域制限で「人体としてありえない曲がり方」を防ぎます（誇張ポーズ用にオフも可）。</p>
+          <div class="flow-shot">[SCREENSHOT] ギズモ操作中の画面</div>
+        </div>
+        <div class="flow-item">
+          <p class="num">STEP 02</p>
+          <h3>構図を決めて書き出す</h3>
+          <p>カメラの画角調整、アオリ・俯瞰のワンクリック切り替え、キャンバス枠の重ね表示。決まったらPNGで保存。背景透過も選べます。</p>
+          <div class="flow-shot">[SCREENSHOT] PNG書き出し</div>
+        </div>
+        <div class="flow-item">
+          <p class="num">STEP 03</p>
+          <h3>下絵にして描く</h3>
+          <p>書き出した画像はトレース自由。輪郭線表示・グレースケール表示で、線を拾いやすい資料にしてから持ち込めます。</p>
+          <div class="flow-shot">[SCREENSHOT] 下絵→作画例</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= VRM ================= -->
+  <section id="vrm">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-label" aria-hidden="true">VRM対応</span>
+        <h2>自分のキャラを、そのままポーズ資料に。</h2>
+      </div>
+      <div class="vrm-grid">
+        <div class="vrm-shot">[SCREENSHOT] VRMモデルにポーズを付けた画面</div>
+        <ul class="vrm-points">
+          <li>VRoid Studioで作った自作モデルなど、<strong>VRMファイル（0.x / 1.0）</strong>をドラッグ&amp;ドロップで読み込み</li>
+          <li>マネキンで作ったポーズをVRMにそのまま適用。逆も可能（ポーズデータは共通形式）</li>
+          <li>「自分のキャラのこの角度が描けない」を、自分のキャラ自身で解決できます</li>
+          <li>モデルデータは<strong>外部に送信されません</strong>（ブラウザ内で完結）</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FEATURES ================= -->
+  <section id="features">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-label" aria-hidden="true">機能</span>
+        <h2>作画資料づくりに要るものを、ひと通り。</h2>
+      </div>
+      <div class="feat">
+        <div class="feat-item"><span class="tag">POSE</span><h3>FK / IK 操作</h3><p>関節を個別に回すFKと、手足を引っ張って動かすIKを切り替え。IKで大まかに、FKで微調整。</p></div>
+        <div class="feat-item"><span class="tag">POSE</span><h3>ピン留め</h3><p>足先を床に固定したまま腰を落として、自然なしゃがみ・重心移動が作れます。</p></div>
+        <div class="feat-item"><span class="tag">POSE</span><h3>指ポーズプリセット</h3><p>パー・グー・指差し・ピース・物を持つ手などをワンクリック適用。自作プリセットの保存も。</p></div>
+        <div class="feat-item"><span class="tag">POSE</span><h3>ポーズライブラリ</h3><p>立ち・座り・戦闘など内蔵プリセット20種以上。自作ポーズもサムネイル付きで保存・呼び出し。</p></div>
+        <div class="feat-item"><span class="tag">POSE</span><h3>部分合成・補間</h3><p>「上半身だけ別ポーズ」の合成や、2つのポーズの中間を作るスライダー。動きの途中の姿勢づくりに。</p></div>
+        <div class="feat-item"><span class="tag">VIEW</span><h3>輪郭線・トゥーン表示</h3><p>線を拾いやすい表示に切り替え。グレースケール・シルエット表示も。</p></div>
+        <div class="feat-item"><span class="tag">VIEW</span><h3>構図支援</h3><p>カメラの保存スロット、画角（mm相当）調整、キャンバス枠、アイレベル線、接地の目安表示。</p></div>
+        <div class="feat-item"><span class="tag">OUT</span><h3>多角度一括書き出し</h3><p>正面・側面・背面などをまとめてPNG出力。キャラデザのラフや三面図の下敷きに。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= TRUST ================= -->
+  <section id="trust">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-label" aria-hidden="true">安心設計</span>
+        <h2>気軽に開けて、安心して使えること。</h2>
+      </div>
+      <div class="trust">
+        <div class="trust-item"><h3>完全ローカル動作</h3><p>ポーズもVRMモデルも、あなたのブラウザの中だけで処理。外部サーバーへの送信はありません。</p></div>
+        <div class="trust-item"><h3>無料・登録不要</h3><p>アカウント作成なし。URLを開けばすぐ使えます。料金は一切かかりません。</p></div>
+        <div class="trust-item"><h3>ソースコード公開</h3><p>中身はすべてGitHubで公開しています。「本当に送信していないか」はコードで確認できます。</p></div>
+        <div class="trust-item"><h3>作業の自動保存</h3><p>ブラウザを閉じても作業中のポーズとカメラを復元。うっかり閉じても大丈夫。</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= FAQ ================= -->
+  <section id="faq">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-label" aria-hidden="true">利用条件</span>
+        <h2>よくある質問と利用条件</h2>
+      </div>
+      <div class="faq">
+        <details open>
+          <summary>商用利用はできますか？</summary>
+          <div class="a"><p>ツール自体は商用・非商用を問わず無料でご利用いただけます。ただしVRMモデルを読み込んで使う場合、そのモデルの利用条件（商用可否・改変可否など）はモデル側の規約に従ってください。マネキン（内蔵モデル）にはこうした制限はありません。</p></div>
+        </details>
+        <details>
+          <summary>書き出した画像をトレースして作品に使えますか？</summary>
+          <div class="a"><p>はい。マネキンで書き出した画像のトレース・加工・下絵利用に制限はなく、成果物の商用利用も自由です。VRMモデルを使った場合は、前項と同じくモデル側の利用条件をご確認ください。</p></div>
+        </details>
+        <details>
+          <summary>クレジット表記は必要ですか？</summary>
+          <div class="a"><p>不要です。書いてくださったら作者が少し喜びます。</p></div>
+        </details>
+        <details>
+          <summary>クリスタの3Dデッサン人形と何が違いますか？</summary>
+          <div class="a"><p>いちばんの違いは、ブラウザだけで動くこと・無料であること・VRMモデルを読み込めることです。お絵かきソフトを持っていなくても使えますし、自作のVRoidキャラをそのままポーズ資料にできます。クリスタをお使いの方も、書き出したPNGを下絵として読み込む形で併用できます。</p></div>
+        </details>
+        <details>
+          <summary>スマホやタブレットで使えますか？</summary>
+          <div class="a"><p>対象外です。PCの最新ブラウザ（Chrome / Edge）でご利用ください。</p></div>
+        </details>
+        <details>
+          <summary>動作が重い・モデルが読み込めないときは？</summary>
+          <div class="a"><p>まずブラウザの再読み込みをお試しください。VRMの読み込みに失敗する場合は、画面のエラーメッセージをご確認のうえ、X（<a href="https://x.com/seihekijikkou">@seihekijikkou</a>）までモデルの入手元と合わせてご報告いただけると助かります。</p></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ROADMAP ================= -->
+  <section id="roadmap">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-label" aria-hidden="true">更新予定</span>
+        <h2>これから増えるもの</h2>
+      </div>
+      <p class="lead">開発は継続中です。ツール内でグレー表示になっている機能は、以下の順で追加予定です。</p>
+      <ul class="roadmap">
+        <li><span class="ver">v1.1</span><span>複数体の同時配置（2体）── 組み合いポーズ・構図検討用</span><span class="dev">開発中</span></li>
+        <li><span class="ver">v1.2</span><span>小物・プロップ（剣・銃・椅子など）と手への持たせ機能</span><span class="dev">予定</span></li>
+        <li><span class="ver">v1.3</span><span>体型バリエーション（頭身・体格・男女・子供マネキン）</span><span class="dev">予定</span></li>
+      </ul>
+    </div>
+  </section>
+
+  <!-- ================= AUTHOR ================= -->
+  <section id="author">
+    <div class="wrap">
+      <div class="sec-head">
+        <span class="sec-label" aria-hidden="true">作者</span>
+        <h2>作っている人</h2>
+      </div>
+      <div class="author">
+        <div>
+          <p><strong>せいじつ</strong>（サークル・性癖実行委員会）。「描きたいポーズの資料が見つからない」を自分ごととして解決するために、個人で開発しています。要望・不具合報告はXでいつでもどうぞ。</p>
+          <div class="links">
+            <a href="https://x.com/seihekijikkou">X：@seihekijikkou</a>
+            <a href="{{CIEN_URL}}">Ci-en（活動報告）</a>
+            <a href="{{REPO_URL}}">GitHub</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= CTA ================= -->
+  <section class="cta-band">
+    <div class="wrap">
+      <h2>さっそく<span class="u">1ポーズ</span>、作ってみませんか。</h2>
+      <p>インストールなし。開いて10秒でポーズを動かせます。</p>
+      <a class="btn big" href="{{TOOL_URL}}">お絵かき招金を使う（無料）</a>
+    </div>
+  </section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <p class="disclaimer">免責事項：本ツールは現状のまま無償で提供されるものであり、動作の完全性は保証されません。本ツールの利用または利用不能によって生じたいかなる損害（データの消失、制作物に関するトラブル等を含む）についても、作者は一切の責任を負いません。VRMモデルの利用条件の確認は利用者の責任で行ってください。</p>
+    <p>ソースコードの取り扱い：<a href="{{REPO_URL}}/blob/main/LICENSE.md">利用条件（再配布不可）</a>／ツールの利用・商用利用は上記FAQのとおり自由です。</p>
+    <p class="copyright">&copy; 2026 性癖実行委員会 / お絵かき招金</p>
+  </div>
+</footer>
+
+</body>
+</html>

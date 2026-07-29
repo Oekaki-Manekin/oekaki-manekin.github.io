@@ -1,0 +1,737 @@
+:root {
+  color-scheme: dark;
+  font-family: "Hiragino Sans", "Yu Gothic", "Segoe UI", sans-serif;
+  /* パネル全体のハイライト色(ボタンのactive状態・選択中カード等)。ヘッダーのスウォッチ(PanelUI.ts)から
+     document.documentElement.style.setPropertyで書き換えられる(2026-07-28、ユーザー要望でオレンジ/青の
+     切替機能を追加)。個々のルールはこの変数を参照するだけにし、色の実体はここに一本化する。 */
+  --accent: #d97a2f;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  margin: 0;
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+  background: #1c1c1f;
+  color: #eee;
+}
+
+#app {
+  display: flex;
+  flex-direction: row;
+}
+
+.viewport {
+  flex: 1 1 auto;
+  position: relative;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.viewport canvas {
+  display: block;
+}
+
+.canvas-frame-overlay {
+  position: absolute;
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  /* 枠外を暗く見せるための簡易マスク(box-shadowのspreadで枠外を塗りつぶす) */
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+}
+
+.eye-level-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed rgba(90, 200, 255, 0.85);
+  pointer-events: none;
+}
+
+.eye-level-line::before {
+  content: "アイレベル";
+  position: absolute;
+  left: 4px;
+  top: -14px;
+  font-size: 10px;
+  color: rgba(180, 225, 255, 0.95);
+  background: rgba(0, 0, 0, 0.4);
+  padding: 1px 4px;
+  border-radius: 2px;
+  white-space: nowrap;
+}
+
+.ground-contact-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.ground-contact-badge {
+  position: absolute;
+  transform: translate(-50%, -100%);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  white-space: nowrap;
+  color: #fff;
+}
+
+.ground-contact-badge--float {
+  background: rgba(74, 158, 255, 0.85);
+}
+
+.ground-contact-badge--sink {
+  background: rgba(230, 80, 80, 0.85);
+}
+
+.gizmo-coord-label {
+  position: absolute;
+  transform: translate(12px, -50%);
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  white-space: nowrap;
+  color: #fff;
+  background: rgba(170, 102, 255, 0.85);
+  pointer-events: none;
+}
+
+.canvas-frame-ratio-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.canvas-frame-ratio-row select {
+  flex: 1;
+  background: #18181b;
+  border: 1px solid #46464e;
+  color: #eee;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.canvas-frame-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.canvas-frame-custom-row input {
+  width: 52px;
+  background: #18181b;
+  border: 1px solid #46464e;
+  color: #eee;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.viewport--drag-over::after {
+  content: "VRMファイルをドロップして読み込み";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--accent) 25%, transparent);
+  border: 3px dashed var(--accent);
+  color: #fff;
+  font-size: 18px;
+  pointer-events: none;
+}
+
+.panel {
+  width: 320px;
+  flex: 0 0 320px;
+  background: #232327;
+  border-left: 1px solid #38383e;
+  overflow-y: auto;
+  padding: 12px;
+}
+
+.panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.panel__header h1 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.panel__title-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* ハイライト色(--accent)切替スウォッチ。丸の色そのものが選択肢の色で、選択中の丸だけ白枠が付く。 */
+.accent-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.accent-swatch--active {
+  border-color: #fff;
+}
+
+.icon-button {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid #555;
+  background: #2f2f35;
+  color: #eee;
+  cursor: pointer;
+}
+
+.panel-section {
+  border-top: 1px solid #38383e;
+  padding: 10px 0;
+}
+
+.panel-section h3 {
+  font-size: 12px;
+  color: #aaa;
+  margin: 0;
+  font-weight: 600;
+}
+
+.panel-section__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.panel-section__header:hover h3 {
+  color: #ddd;
+}
+
+.panel-section__chevron {
+  flex-shrink: 0;
+  margin-left: 8px;
+  font-size: 36px;
+  color: #888;
+  transition: transform 0.15s ease;
+}
+
+.panel-section--collapsed .panel-section__header {
+  margin-bottom: 0;
+}
+
+.panel-section--collapsed .panel-section__chevron {
+  transform: rotate(-90deg);
+}
+
+.panel-section--collapsed .panel-section__body {
+  display: none;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.button-row button,
+.panel-section button {
+  background: #33333a;
+  border: 1px solid #46464e;
+  color: #eee;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.button-row button:hover,
+.panel-section button:hover {
+  background: #3d3d45;
+}
+
+.button-row button:disabled,
+.panel-section button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.button--active {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fff !important;
+}
+
+.model-status {
+  font-size: 11px;
+  color: #999;
+  margin-top: 6px;
+  line-height: 1.4;
+}
+
+/* キャラクタースロット一覧(フェーズ6・(B)複数体配置)。1チップ=1体で、切替・表示切替・削除をまとめる。 */
+.character-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.character-chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #2a2a30;
+  border: 1px solid #46464e;
+  border-radius: 5px;
+  padding: 3px 5px;
+}
+
+.character-chip--active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 30%, #1c1c1f 70%);
+}
+
+.character-chip__select {
+  background: transparent !important;
+  border: none !important;
+  padding: 2px 4px !important;
+  font-size: 11px;
+}
+
+.character-chip--active .character-chip__select {
+  color: #fff !important;
+}
+
+.character-chip__remove {
+  background: transparent !important;
+  border: none !important;
+  padding: 0 4px !important;
+  color: #999 !important;
+  font-size: 13px;
+  line-height: 1;
+}
+
+.character-chip__remove:hover {
+  color: #f66 !important;
+}
+
+.button--primary {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fff !important;
+  width: 100%;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.slider-row input[type="range"] {
+  flex: 1;
+}
+
+.slider-row__value {
+  min-width: 44px;
+  text-align: right;
+  color: #ccc;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  margin-bottom: 8px;
+  cursor: pointer;
+}
+
+.joint-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.joint-list__group-title {
+  font-size: 11px;
+  color: #888;
+  margin-top: 6px;
+}
+
+.joint-list__item {
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #ddd;
+  padding: 4px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.joint-list__item:hover {
+  background: #2f2f36;
+}
+
+/* ".panel-section button"の方が詳細度が高く上書きされてしまうため、.prop-list__item--active等と同じく
+   !importantで確実に勝たせる(2026-07-27の3巡目対応で発覚、修正は次回セッションに持ち越されていた)。 */
+.joint-list__item--active {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+/* 小物一覧(PropPanel)の選択中の行。以前は部位一覧(JointListPanel)のオレンジと区別するため
+   青にしていたが(2026-07-27)、2026-07-28にパネル全体のハイライト色をオレンジへ統一する
+   ユーザー要望を受け、.joint-list__item--active等と同じオレンジへ変更した。
+   ".panel-section button"の方が詳細度が高く上書きされてしまうため、.button--active等と同じく
+   !importantで確実に勝たせる。 */
+.prop-list__item--active {
+  background: var(--accent) !important;
+  color: #fff !important;
+}
+
+.inspector__title {
+  font-size: 13px;
+  margin-bottom: 8px;
+  color: #ddd;
+}
+
+.inspector__row {
+  display: flex;
+  gap: 8px;
+}
+
+.inspector__field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: #aaa;
+  flex: 1;
+}
+
+.inspector__field input {
+  background: #18181b;
+  border: 1px solid #46464e;
+  color: #eee;
+  padding: 4px 6px;
+  border-radius: 3px;
+  width: 100%;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-overlay--hidden {
+  display: none;
+}
+
+.modal-box {
+  background: #26262b;
+  border: 1px solid #46464e;
+  border-radius: 8px;
+  padding: 20px 24px;
+  max-width: 420px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+
+.modal-box h2 {
+  margin-top: 0;
+  font-size: 15px;
+}
+
+.modal-box__close {
+  margin-top: 12px;
+  background: #33333a;
+  border: 1px solid #46464e;
+  color: #eee;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.modal-box__buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.modal-box__buttons button {
+  background: #33333a;
+  border: 1px solid #46464e;
+  color: #eee;
+  padding: 6px 14px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.shortcut-list {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+  font-size: 13px;
+  margin: 0;
+}
+
+.shortcut-list dt {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.shortcut-list dd {
+  margin: 0;
+  color: #ddd;
+}
+
+.finger-preset-chip {
+  display: inline-flex;
+  align-items: stretch;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.finger-preset-chip button {
+  border-radius: 0;
+}
+
+.finger-preset-chip__delete {
+  padding: 6px 8px !important;
+  background: #4a2a2a !important;
+  border-left: 1px solid #46464e !important;
+}
+
+.finger-panel__save {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.finger-panel__save input {
+  flex: 1;
+  min-width: 100px;
+  background: #18181b;
+  border: 1px solid #46464e;
+  color: #eee;
+  padding: 4px 6px;
+  border-radius: 3px;
+}
+
+.finger-panel__save button {
+  background: #33333a;
+  border: 1px solid #46464e;
+  color: #eee;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.finger-panel__details {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #ccc;
+}
+
+.finger-panel__details summary {
+  cursor: pointer;
+  color: #aaa;
+  margin-bottom: 6px;
+}
+
+.camera-view-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+/* --- ポーズライブラリ(フェーズ4) --- */
+.pose-parts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+
+/* .panel-section button の汎用ルールは詳細度(0,1,1)がこちら(0,1,0)より高く上書きされてしまうため、
+   on/offの色分けが効くよう !important で確実に勝たせる(.button--active と同じ理由・同じ対処)。 */
+.pose-part-chip {
+  background: #2a2a30 !important;
+  border: 1px solid #46464e !important;
+  color: #999 !important;
+  padding: 3px 7px;
+  border-radius: 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pose-part-chip--on {
+  background: var(--accent) !important;
+  border-color: var(--accent) !important;
+  color: #fff !important;
+}
+
+.pose-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.pose-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  background: #1f1f23;
+  border: 1px solid #3a3a42;
+  border-radius: 5px;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  color: #ddd;
+}
+
+.pose-card > button.pose-card__apply {
+  display: flex;
+  flex-direction: column;
+  background: transparent;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+}
+
+.pose-card img {
+  width: 100%;
+  height: auto;
+  display: block;
+  background: #2b2b30;
+}
+
+.pose-card__label {
+  font-size: 10.5px;
+  padding: 3px 4px;
+  text-align: center;
+  line-height: 1.25;
+  color: #ccc;
+  word-break: break-all;
+}
+
+.pose-card:hover {
+  border-color: var(--accent);
+}
+
+.pose-card--selected,
+.pose-card--selected:hover {
+  border-color: var(--accent);
+}
+
+.pose-card--selected .pose-card__label {
+  background: var(--accent);
+  color: #fff;
+}
+
+.pose-card--saved {
+  cursor: default;
+}
+
+.pose-card__actions {
+  display: flex;
+  border-top: 1px solid #3a3a42;
+}
+
+.pose-card__actions button {
+  flex: 1;
+  background: #2a2a30;
+  border: none;
+  border-radius: 0;
+  color: #ccc;
+  font-size: 11px;
+  padding: 4px 0;
+  cursor: pointer;
+}
+
+.pose-card__actions button:hover {
+  background: #33333a;
+}
+
+.pose-card__actions button.pose-card__delete {
+  border-left: 1px solid #3a3a42;
+  color: #e0a0a0;
+}
+
+.pose-interp__selects {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.pose-interp__selects select {
+  flex: 1;
+  min-width: 0;
+  background: #18181b;
+  border: 1px solid #46464e;
+  color: #eee;
+  padding: 4px 6px;
+  border-radius: 3px;
+  font-size: 12px;
+}
+
+.pose-interp__arrow {
+  color: #888;
+  font-size: 13px;
+}
+
+.toast {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #3a2020;
+  border: 1px solid #7a3a3a;
+  color: #f5d5d5;
+  padding: 10px 18px;
+  border-radius: 6px;
+  font-size: 13px;
+  z-index: 200;
+  max-width: 80vw;
+}
