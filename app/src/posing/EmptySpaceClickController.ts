@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { Character } from "../character/Character";
 import { getBodyMeshes } from "../scene/DisplayModeMaterials";
+import { filterPickable } from "./pickFilter";
 
 export interface EmptySpaceTargetsProvider {
   getCharacters: () => readonly Character[];
@@ -50,7 +51,10 @@ export class EmptySpaceClickController {
       objects.push(...character.pickableMeshes, ...getBodyMeshes(character));
     }
     objects.push(...this.targets.getPropObjects());
-    return objects;
+    // 非表示にしているキャラクター(とそこに持たせている小物)は「いない扱い」にするため、
+    // 「何もない場所」の判定でも無いものとして扱う=その位置のダブルクリックでクリーンビューへ
+    // 入れるし、クリーンビュー中にそこをクリックしても復帰しない(2026-08-03、ユーザー要望)。
+    return filterPickable(objects);
   }
 
   private hitsSomething(clientX: number, clientY: number): boolean {

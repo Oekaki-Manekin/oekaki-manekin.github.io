@@ -2,6 +2,7 @@ import * as THREE from "three";
 import type { BoneName } from "../config/boneDefs";
 import type { Character } from "../character/Character";
 import { getBodyMeshes } from "../scene/DisplayModeMaterials";
+import { filterPickable } from "./pickFilter";
 
 export interface CharacterSlotLike {
   readonly id: string;
@@ -79,7 +80,9 @@ export class CrossCharacterSelector {
       // 二重ヒット(同一メッシュへの重複レイキャスト)にはならない。
       const targets = new Set<THREE.Object3D>(slot.character.pickableMeshes);
       for (const mesh of getBodyMeshes(slot.character)) targets.add(mesh);
-      const hits = this.raycaster.intersectObjects([...targets], false);
+      // 非表示にしているキャラクターは「いない扱い」にし、その位置をクリックしても切り替えない
+      // (2026-08-03、ユーザー要望: 透明なのに空中クリックでコントローラーが出るのは不可解)。
+      const hits = this.raycaster.intersectObjects(filterPickable([...targets]), false);
       if (hits.length > 0) {
         const boneName = (hits[0].object.userData.boneName as BoneName | undefined) ?? null;
         for (const cb of this.listeners) cb(slot.id, boneName);

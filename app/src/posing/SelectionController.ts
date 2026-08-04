@@ -1,6 +1,7 @@
 import * as THREE from "three";
 import type { BoneName } from "../config/boneDefs";
 import type { Character } from "../character/Character";
+import { filterPickable } from "./pickFilter";
 
 type SelectListener = (boneName: BoneName | null) => void;
 
@@ -74,7 +75,9 @@ export class SelectionController {
     this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
-    const hits = this.raycaster.intersectObjects(this.character.pickableMeshes, false);
+    // モデル欄のチェックを外して非表示にしているキャラクターは「いない扱い」にする(2026-08-03、
+    // ユーザー要望)。非表示中は全マーカーが除外されるので必ず空振りし、選択解除されるだけになる。
+    const hits = this.raycaster.intersectObjects(filterPickable(this.character.pickableMeshes), false);
     if (hits.length > 0) {
       const boneName = hits[0].object.userData.boneName as BoneName;
       this.select(boneName);

@@ -7,6 +7,7 @@ import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
 import { ShaderPass } from "three/examples/jsm/postprocessing/ShaderPass.js";
 import { Pass } from "three/examples/jsm/postprocessing/Pass.js";
 import type { CameraPreset } from "./cameraPresets";
+import { computeFitDistance, type FitOptions } from "./cameraFraming";
 
 // 輪郭線「実線」モード(2026-07-27、ユーザー要望)用のシャープなエッジ検出シェーダー。
 // OutlinePass(フェードモード)は内部で必ずガウシアンブラーを掛ける構造上、輪郭が常に
@@ -169,6 +170,11 @@ const DEFAULT_LIGHT_ELEVATION_DEG = THREE.MathUtils.radToDeg(Math.asin(4 / LIGHT
 // 独立してマーカーだけモデルに近づけても見た目は変わらない。操作しやすさのため実距離の半分にする。
 const LIGHT_MARKER_DISTANCE = LIGHT_DISTANCE * 0.5;
 const _tmpLightDir = new THREE.Vector3();
+// frameObjects()で使う「注視点→カメラ」方向の一時ベクトル(毎回のnewを避けるため使い回す)。
+const _fitDirection = new THREE.Vector3();
+// applyCameraPreset()のpivot指定時に使う「注視点→カメラ」オフセットの一時ベクトル。
+const _presetOffset = new THREE.Vector3();
+const _presetTarget = new THREE.Vector3();
 
 export interface CameraState {
   position: [number, number, number];
@@ -206,6 +212,14 @@ export class SceneManager {
   private solidOutlinePass: ShaderPass;
   /** 輪郭線・選択インジケーターの検出対象から除外するオブジェクト(ギズモ・IKハンドル等)。 */
   private outlineExcludedObjects: THREE.Object3D[] = [];
+  /**
+   * PNG書き出し時に一時的に隠す「コントローラー」オブジェクト(ギズモ矢印・IKハンドル・光源マーカー等)。
+   * outlineExcludedObjectsとほぼ同じ顔ぶれだが、グリッド・影床はここには含めない(2026-08-03、
+   * ユーザー報告: 書き出したPNGにギズモ・コントローラーがそのまま写り込み作画資料として扱いづらい)。
+   * グリッド・影床は既存のsetGridVisible等ユーザー操作の表示トグルに委ね、ここでは強制しない。
+   */
+  private controllerObjects: THREE.Object3D[] = [];
+  private controllerPrevVisibility: boolean[] | null = null;
   private outlineEnabled = false;
   // 実線モードをデフォルトにする変更を一度試したが、ユーザー環境で輪郭線が見えない(かつ
   // ギズモ・光源マーカーが誤って表示されつづける別バグも重なった)との報告を受け、
@@ -221,9 +235,13 @@ export class SceneManager {
     this.scene = new THREE.Scene();
     this.scene.background = this.backgroundColor;
 
+    // コンテナのレイアウトが確定する前(サイズ0)に構築されると、aspectが0除算でNaN/Infinityになり、
+    // 起動シーケンスのsetFocalLength()が逆算するfovまでNaNのまま固定されてしまう。そうなると描画も
+    // 全身フィットの距離計算も全て壊れるため、確定前は暫定値で守る(直後のhandleResizeで正しい値になる)。
+    const hasLayout = container.clientWidth > 0 && container.clientHeight > 0;
     this.camera = new THREE.PerspectiveCamera(
       45,
-      container.clientWidth / container.clientHeight,
+      hasLayout ? container.clientWidth / container.clientHeight : 1,
       0.05,
       100,
     );
@@ -296,6 +314,7 @@ export class SceneManager {
     // 輪郭線・選択インジケーターの検出対象から除外する自前のオブジェクト。
     // ギズモ・IKハンドル(main.ts側の各コントローラーが持つ)はaddOutlineExcludedObject()で追加登録する。
     this.outlineExcludedObjects.push(this.gridHelper, this.lightMarker, this.lightHandle, shadowFloor);
+    this.controllerObjects.push(this.lightMarker, this.lightHandle);
 
     this.renderer.shadowMap.enabled = false;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -383,10 +402,61 @@ export class SceneManager {
     return this.camera.getFocalLength();
   }
 
-  applyCameraPreset(preset: CameraPreset): void {
-    this.camera.position.set(...preset.position);
-    this.orbitControls.target.set(...preset.target);
+  /**
+   * 視点プリセットを適用する。pivotを渡すと、プリセットが定義する「注視点→カメラ」の相対位置関係
+   * (見る向き・見下ろし/見上げ角度)はそのまま保ち、注視点自体をプリセット既定値(原点付近の固定値)
+   * ではなくpivotへ平行移動する(2026-08-03、ユーザー報告: 多角度書き出しでモデルを原点から
+   * 大きく動かしていると見切れる。プリセットの注視点が世界原点付近の固定値のままだったため)。
+   */
+  applyCameraPreset(preset: CameraPreset, pivot?: THREE.Vector3): void {
+    if (pivot) {
+      _presetOffset.set(...preset.position);
+      _presetTarget.set(...preset.target);
+      _presetOffset.sub(_presetTarget);
+      this.camera.position.copy(pivot).add(_presetOffset);
+      this.orbitControls.target.copy(pivot);
+    } else {
+      this.camera.position.set(...preset.position);
+      this.orbitControls.target.set(...preset.target);
+    }
     this.camera.lookAt(this.orbitControls.target);
+    this.orbitControls.update();
+  }
+
+  /**
+   * 対象オブジェクト群が画面に収まる距離までカメラを前後させる(2026-08-03、ユーザー要望:
+   * 起動直後・多角度書き出しで頭と足が見切れる)。注視点・視線の向き・焦点距離はいずれも変えないため、
+   * アオリ・俯瞰など視点プリセットが意図した構図はそのまま保たれる。
+   * 対象が空・カメラが注視点と同一位置など、算出できなかった場合は何も変更せずfalseを返す。
+   */
+  frameObjects(objects: readonly THREE.Object3D[], options?: FitOptions): boolean {
+    const target = this.orbitControls.target;
+    _fitDirection.subVectors(this.camera.position, target);
+    if (_fitDirection.lengthSq() < 1e-12) return false;
+    _fitDirection.normalize();
+    const distance = computeFitDistance(this.camera, target, _fitDirection, objects, options);
+    if (distance === null) return false;
+    this.camera.position.copy(target).addScaledVector(_fitDirection, distance);
+    this.camera.lookAt(target);
+    this.orbitControls.update();
+    return true;
+  }
+
+  /**
+   * 現在のカメラの向き・注視点を保ったまま、距離だけを指定値に設定する(2026-08-03、ユーザー報告:
+   * 多角度書き出しで前後と左右の画像を並べるとモデルの大きさが微妙に揃わない)。frameObjects()は
+   * 呼ぶたびその時点の対象で距離を再計算するため、人体のように正面幅と側面奥行きが異なる対象だと
+   * 方向ごとに最適な距離が変わり、書き出し画像ごとに縮尺(見た目の大きさ)が食い違ってしまう。
+   * こちらは呼び出し側が全方向のうちの最大値としてあらかじめ求めた「共通の距離」をそのまま適用する
+   * ためのもので、距離自体の計算はしない。
+   */
+  setCameraDistance(distance: number): void {
+    const target = this.orbitControls.target;
+    _fitDirection.subVectors(this.camera.position, target);
+    if (_fitDirection.lengthSq() < 1e-12) return;
+    _fitDirection.normalize();
+    this.camera.position.copy(target).addScaledVector(_fitDirection, distance);
+    this.camera.lookAt(target);
     this.orbitControls.update();
   }
 
@@ -536,6 +606,41 @@ export class SceneManager {
   /** キャラクター切替でIkControllerを作り直す際等、登録済みの除外オブジェクトを取り除く。 */
   removeOutlineExcludedObject(...objects: THREE.Object3D[]): void {
     this.outlineExcludedObjects = this.outlineExcludedObjects.filter((o) => !objects.includes(o));
+  }
+
+  /**
+   * PNG書き出し時にhideControllersForExport()で一時的に隠す対象を登録する。
+   * addOutlineExcludedObject()と同じ呼び出し元・同じオブジェクトを渡す想定(2026-08-03追加)。
+   */
+  addControllerObject(...objects: THREE.Object3D[]): void {
+    this.controllerObjects.push(...objects);
+  }
+
+  /** キャラクター切替でIkControllerを作り直す際等、登録済みのコントローラーオブジェクトを取り除く。 */
+  removeControllerObject(...objects: THREE.Object3D[]): void {
+    this.controllerObjects = this.controllerObjects.filter((o) => !objects.includes(o));
+  }
+
+  /**
+   * PNG書き出し直前に呼び、ギズモ・IKハンドル・光源マーカー等のコントローラー類を一時的に隠す。
+   * 呼び出し前の各オブジェクトの表示状態を記録しておき、restoreControllersVisibility()で正確に
+   * 元へ戻す(何も選択されておらずギズモがそもそも非表示、といった状態を書き出し後に誤って
+   * 表示させてしまわないため)。ネスト呼び出しは想定しない(書き出し処理は都度完了を待ってから
+   * 次を呼ぶ)。
+   */
+  hideControllersForExport(): void {
+    this.controllerPrevVisibility = this.controllerObjects.map((o) => o.visible);
+    for (const o of this.controllerObjects) o.visible = false;
+  }
+
+  /** hideControllersForExport()で隠したコントローラー類を、書き出し前の表示状態へ正確に戻す。 */
+  restoreControllersVisibility(): void {
+    if (!this.controllerPrevVisibility) return;
+    const prev = this.controllerPrevVisibility;
+    this.controllerObjects.forEach((o, i) => {
+      o.visible = prev[i] ?? true;
+    });
+    this.controllerPrevVisibility = null;
   }
 
   /** 現在の表示モードに応じた1フレーム分の描画を行う(通常は直接render、輪郭線ON時はcomposer経由)。 */

@@ -157,7 +157,9 @@ export const POSE_PRESET_DEFS: PosePresetDef[] = [
     category: "standing",
     euler: {
       // 右上腕Z: 右側は符号反転(右は負値で上げる)。+118のままだと腕が下がる方向に暴走するバグだった。
-      rightUpperArm: [0, 0, -100],
+      // Zの絶対値が90を超えると腕は「真上」を通り越して反対側へ倒れ込むため、-100では
+      // 上腕が頭の球に1.2cm・胸に2.4cm食い込んでいた(2026-08-03の数値検証)。-80で頭を避ける。
+      rightUpperArm: [0, 0, -80],
       rightLowerArm: [0, 55, 0],
       leftUpperArm: ARM_DOWN,
       head: [0, -8, 0],
@@ -192,12 +194,16 @@ export const POSE_PRESET_DEFS: PosePresetDef[] = [
     id: "sit_chair",
     label: "椅子に座る",
     category: "sitting",
+    // 腰の高さは椅子プロップ(propDefs.tsのchair)の座面に合わせてある。椅子は原点=座面中心・
+    // 脚の長さ0.4mなので、床に置くと座面上面は y=0.425。hips=0.52 で尻の底(hips原点-0.10)が
+    // ちょうど 0.42 に来て、同時に足裏が床(y≒0)に着く(2026-08-03、数値検証で決定)。
     mirror: true,
-    hips: [0, 0.48, 0],
+    hips: [0, 0.52, 0],
     euler: {
       spine: [6, 0, 0],
-      leftUpperLeg: [-84, 0, 0],
-      leftLowerLeg: [82, 0, 0],
+      leftUpperLeg: [-91, 0, 0],
+      leftLowerLeg: [89, 0, 0],
+      leftFoot: [10, 0, 0],
       leftUpperArm: [0, 0, -72],
       leftLowerArm: [0, -30, 0],
     },
@@ -206,12 +212,14 @@ export const POSE_PRESET_DEFS: PosePresetDef[] = [
     id: "seiza",
     label: "正座",
     category: "sitting",
+    // 膝とすねが床に着き、かかとの上に尻が乗る配置。太ももをほぼ水平(-64)まで倒し、
+    // 膝を深く畳む(160)ことで初めて成立する(旧値 -24/148 は膝が床下16cmに埋まっていた)。
     mirror: true,
-    hips: [0, 0.34, 0],
+    hips: [0, 0.29, 0],
     euler: {
-      leftUpperLeg: [-24, 0, 4],
-      leftLowerLeg: [148, 0, 0],
-      leftFoot: [-40, 0, 0],
+      leftUpperLeg: [-64, 0, 4],
+      leftLowerLeg: [160, 0, 0],
+      leftFoot: [50, 0, 0],
       leftUpperArm: [0, 0, -70],
       leftLowerArm: [0, -34, 0],
     },
@@ -220,12 +228,20 @@ export const POSE_PRESET_DEFS: PosePresetDef[] = [
     id: "cross_legged",
     label: "あぐら",
     category: "sitting",
+    // 旧値は脚が床下43cmまで突き抜けていた。膝を深く畳んで足首を体の前へ引き寄せる形に
+    // 作り直し、床抜けを-4.4cm(Tポーズの-2.0cmとほぼ同等)まで詰めてある。
+    //
+    // 【このリグの限界】股関節の可動域(外転Z±50・回旋Y±60)では、膝を床まで落として
+    // すねを水平に組む「深いあぐら」は原理的に作れない。すねを水平に畳むには股関節の
+    // 回旋が約±105必要になるため(2026-08-03に数値で確認)。ここでは膝がやや浮いた
+    // 「かたいあぐら」が上限で、左右のすねは体の中心で接触する(実際のあぐらでも
+    // ふくらはぎ同士は接するため、この重なりは意図したもの)。
     mirror: true,
-    hips: [0, 0.3, 0],
+    hips: [0, 0.15, 0],
     euler: {
-      leftUpperLeg: [-58, 0, 34],
-      leftLowerLeg: [96, 0, 0],
-      leftFoot: [0, -30, 0],
+      leftUpperLeg: [-126, 30, 31],
+      leftLowerLeg: [160, 0, 0],
+      leftFoot: [-50, 0, 0],
       leftUpperArm: [0, 0, -68],
       leftLowerArm: [0, -36, 0],
     },
@@ -234,13 +250,15 @@ export const POSE_PRESET_DEFS: PosePresetDef[] = [
     id: "hug_knees",
     label: "体育座り",
     category: "sitting",
+    // 尻を床に着けたまま膝を立てる。旧値(hips 0.36)は尻が床から26cm浮いており、
+    // 見えない椅子に座っているような見た目になっていた。
     mirror: true,
-    hips: [0, 0.36, 0],
+    hips: [0, 0.14, 0],
     euler: {
       spine: [14, 0, 0],
       chest: [6, 0, 0],
-      leftUpperLeg: [-112, 0, 6],
-      leftLowerLeg: [128, 0, 0],
+      leftUpperLeg: [-140, 0, 4],
+      leftLowerLeg: [140, 0, 0],
       leftUpperArm: [0, 0, -40],
       leftLowerArm: [0, -120, 0],
     },
@@ -268,23 +286,35 @@ export const POSE_PRESET_DEFS: PosePresetDef[] = [
     id: "sit_floor_lean",
     label: "床でくつろぐ",
     category: "sitting",
+    // 床に座って脚を前へ投げ出し、後ろへ突いた腕で上体を支える。
+    // 旧値は上腕Z=-104(可動域外)で腕が真下を通り越して体の内側へ入り込み、
+    // 前腕が骨盤に7cm・太ももに11cm埋まっていた。上腕のX(前後の振り)で腕を
+    // 後ろへ逃がし、Zは可動域内(-85)に収めることで解消している。
     mirror: true,
-    hips: [0, 0.3, 0],
+    hips: [0, 0.1, 0],
     euler: {
-      spine: [-8, 0, 0],
-      leftUpperLeg: [-64, 0, 6],
-      leftLowerLeg: [28, 0, 0],
-      leftUpperArm: [0, 0, -104],
-      leftLowerArm: [0, -10, 0],
+      spine: [-12, 0, 0],
+      leftUpperLeg: [-91, 0, 8],
+      leftLowerLeg: [7, 0, 0],
+      leftFoot: [20, 0, 0],
+      leftUpperArm: [46, 0, -66],
+      leftLowerArm: [0, -58, 0],
+      // 手を後ろに突く姿勢なので手首を反らせる。これを入れないと指が腕の延長線上に
+      // まっすぐ伸びて床下19cmまで突き抜ける。
+      leftHand: [0, 0, 50],
     },
   },
   // ---------------- 寝そべり ----------------
+  // 寝そべり系は hips のオイラー角で全身を倒すため、体の「上下」がワールドの奥行き方向に
+  // 入れ替わる。腕・脚の角度を考えるときは必ずこの回転後の向きで判断すること
+  // (例: 仰向けでは体の前=ワールド上。肘をY軸で曲げると前腕は床から浮く方向へ動く)。
+  // hips.y は「一番出っ張る部位(頭の球・半径0.12)が床に触れる高さ」に合わせて 0.11 とした。
   {
     id: "lie_back",
     label: "仰向け",
     category: "lying",
     mirror: true,
-    hips: [0, 0.18, 0],
+    hips: [0, 0.11, 0],
     euler: {
       hips: [-90, 0, 0],
       leftUpperArm: [0, 0, -62],
@@ -295,44 +325,57 @@ export const POSE_PRESET_DEFS: PosePresetDef[] = [
     id: "lie_prone",
     label: "うつ伏せ",
     category: "lying",
+    // 旧値(上腕Z=-100・前腕Y=-30)は、腕が体側を通り越して内側へ入り、
+    // 前腕が骨盤に4cm・太ももに3.7cm埋まったうえ床下3cmまで沈んでいた。
+    // うつ伏せでは肘のY回転が「床へ向かう向き」になるため、上腕をX=90でひねって
+    // 肘の曲げ面を床と平行にし、前腕を頭の横へ置く(いわゆるスフィンクス型)。
     mirror: true,
-    hips: [0, 0.2, 0],
+    hips: [0, 0.13, 0],
     euler: {
       hips: [90, 0, 0],
-      // Z角度の絶対値が約113度を超えると腕が体の反対側まで振り切れてしまうため-100に抑える。
-      leftUpperArm: [0, 0, -100],
-      leftLowerArm: [0, -30, 0],
+      leftUpperArm: [90, 0, 0],
+      leftLowerArm: [0, 65, 0],
+      // うつ伏せでは足の甲が床に着く。足首を最大まで伸ばして爪先を後ろへ倒す
+      // (これを入れないと足の箱が真下=床の中へ24cm突き刺さる)。
+      leftFoot: [50, 0, 0],
     },
   },
   {
     id: "lie_side",
     label: "横向き",
     category: "lying",
-    hips: [0, 0.2, 0],
+    // 体の右側を下にして寝る。肩幅の分だけ体の中心線が床から浮くので hips.y は 0.25。
+    // 旧値(0.2)では下側になる右肩が床面と同じ高さになり、右腕が床下9cmに埋まっていた。
+    // 下の腕(右)は体の下敷きにならないよう前方へ出す。
+    hips: [0, 0.25, 0],
     euler: {
       hips: [0, 0, 90],
       leftUpperLeg: [-30, 0, 0],
       leftLowerLeg: [46, 0, 0],
       rightUpperLeg: [-18, 0, 0],
       rightLowerLeg: [30, 0, 0],
-      leftUpperArm: [0, 0, -50],
+      leftUpperArm: [0, 0, -75],
       leftLowerArm: [0, -40, 0],
-      rightUpperArm: [0, 0, 84],
+      rightUpperArm: [0, 85, 0],
+      rightLowerArm: [0, 25, 0],
     },
   },
   {
     id: "lie_relaxed",
     label: "寝そべりくつろぎ",
     category: "lying",
+    // 仰向けで両膝を立てた姿勢。旧値は腕が体の上に被さって骨盤・太ももを貫通し、
+    // かつ「膝を曲げる」回転が仰向けでは床へ潜る向きだったためすねが床下に入っていた。
+    // 太ももを持ち上げてから膝を畳むことで、足裏が床に着く形にしている。
     mirror: true,
-    hips: [0, 0.18, 0],
+    hips: [0, 0.11, 0],
     euler: {
       hips: [-90, 0, 0],
-      // Z角度の絶対値が約113度を超えると腕が体の反対側まで振り切れてしまうため-100に抑える。
-      leftUpperArm: [0, 0, -100],
-      leftLowerArm: [0, -30, 0],
-      leftUpperLeg: [-6, 0, 8],
-      leftLowerLeg: [24, 0, 0],
+      leftUpperArm: [0, 0, -55],
+      leftLowerArm: [0, -10, 0],
+      leftUpperLeg: [-50, 0, 8],
+      leftLowerLeg: [117, 0, 0],
+      leftFoot: [23, 0, 0],
     },
   },
   // ---------------- アクション ----------------
@@ -375,12 +418,15 @@ export const POSE_PRESET_DEFS: PosePresetDef[] = [
     id: "fighting_stance",
     label: "構え",
     category: "action",
+    // 腰を10cm落とした分だけ膝を曲げて足裏を床に残す。旧値は膝の曲げが足りず、
+    // 腰を下げた分そのまま足が床下10cmに沈んでいた。
     mirror: true,
     hips: [0, 0.82, 0],
     euler: {
       spine: [8, 14, 0],
-      leftUpperLeg: [-24, 0, 16],
-      leftLowerLeg: [40, 0, 0],
+      leftUpperLeg: [-30, 0, 16],
+      leftLowerLeg: [62, 0, 0],
+      leftFoot: [-32, 0, 0],
       leftUpperArm: [0, 0, -44],
       leftLowerArm: [0, -118, 0],
     },
@@ -392,8 +438,9 @@ export const POSE_PRESET_DEFS: PosePresetDef[] = [
     mirror: true,
     euler: {
       spine: [-6, 0, 0],
-      // Z角度の絶対値が約113度を超えると腕が体の反対側まで振り切れてしまうため100に抑える。
-      leftUpperArm: [0, 0, 100],
+      // Zの絶対値が90を超えると腕は真上を通り越して反対側へ倒れ込む。100では左右の
+      // 上腕が頭の球に1.2cmずつ食い込んでいたため、万歳(80)と同じ角度に揃える。
+      leftUpperArm: [0, 0, 80],
       leftLowerArm: [0, 20, 0],
       leftUpperLeg: [-30, 0, 6],
       leftLowerLeg: [46, 0, 0],

@@ -1,6 +1,7 @@
+import type * as THREE from "three";
 import { SceneManager } from "./scene/SceneManager";
 import { CAMERA_PRESETS } from "./scene/cameraPresets";
-import { applyShadingMode, applyShadingModeToObjects, type ShadingMode } from "./scene/DisplayModeMaterials";
+import { applyShadingMode, applyShadingModeToObjects, getBodyMeshes, type ShadingMode } from "./scene/DisplayModeMaterials";
 import { buildMannequin, type Mannequin } from "./mannequin/MannequinBuilder";
 import { SelectionController } from "./posing/SelectionController";
 import { GizmoController } from "./posing/GizmoController";
@@ -23,7 +24,7 @@ import {
 } from "./posing/PoseSerializer";
 import { applyPosePartial, boneSetForParts, type PosePart } from "./posing/PoseBlend";
 import { downloadTextFile, openTextFile, openBinaryFile } from "./io/platform";
-import { exportViewportPNG, exportMultiAnglePNG } from "./io/pngExporter";
+import { exportViewportPNG, exportMultiAnglePNG, type ExportCropRect } from "./io/pngExporter";
 import { renderPoseThumbnail } from "./io/thumbnailRenderer";
 import { POSE_LIBRARY_FORMAT_VERSION, type PoseLibraryFile } from "./io/poseLibraryStorage";
 import { addSavedCamera, removeSavedCamera, type SavedCameraView } from "./io/savedCameraStorage";
@@ -133,6 +134,9 @@ async function main(): Promise<void> {
   // 誤って引っかからないよう除外登録する(2026-07-27、ユーザー指摘)。IkControllerはキャラ切替の
   // たびに作り直すため、rebuildIkAndPin()内で個別に登録・解除する。
   sceneManager.addOutlineExcludedObject(gizmo.transformControls.getHelper(), propController.transformControls.getHelper());
+  // 同じくPNG書き出し時に一時的に隠す対象としても登録する(2026-08-03、ユーザー要望:
+  // 書き出したPNGにギズモ・コントローラーがそのまま写り込み作画資料として扱いづらい)。
+  sceneManager.addControllerObject(gizmo.transformControls.getHelper(), propController.transformControls.getHelper());
   // 複数体配置時、非アクティブなキャラの体をビュー上でクリックしたら「切替(+ボーンクリックなら選択も)」を行う
   // (2026-07-24、ユーザー要望。2026-07-28、体本体メッシュもクリック対象に拡張)。対象は非アクティブな
   // キャラのpickableMeshes+体本体メッシュのみなので、アクティブキャラのボーン選択(selection)・
@@ -236,7 +240,10 @@ async function main(): Promise<void> {
   let shadingMode: ShadingMode = "normal";
 
   function rebuildIkAndPin(character: Character): void {
-    if (ikController) sceneManager.removeOutlineExcludedObject(...ikController.outlineExcludedObjects);
+    if (ikController) {
+      sceneManager.removeOutlineExcludedObject(...ikController.outlineExcludedObjects);
+      sceneManager.removeControllerObject(...ikController.outlineExcludedObjects);
+    }
     ikController?.dispose();
     ikController = new IkController(
       sceneManager.camera,
@@ -256,6 +263,7 @@ async function main(): Promise<void> {
     ikController.onDragEnd(() => crossCharacterSelector.suppressNextRaycast());
     pinController = new PinController(ikController);
     sceneManager.addOutlineExcludedObject(...ikController.outlineExcludedObjects);
+    sceneManager.addControllerObject(...ikController.outlineExcludedObjects);
     panel.setAvailableIkChains(new Set(ikController.availableEffectors));
     // デフォルトでIKモードを有効にする(2026-07-24、ユーザー要望によりFKからIKへデフォルト変更)。
     ikController.setEnabled(true);
@@ -263,21 +271,32 @@ async function main(): Promise<void> {
     for (const effector of LIMB_EFFECTORS) panel.setPinned(effector, false);
   }
 
-  // 作画資料用のクリーンなビュー: IKハンドル(ピン留め中も含め)を隠し、FKギズモ・ボーン選択・
-  // ハイライトも選択解除(selection.select(null))と同じ経路でクリアする(GizmoControllerの
-  // selection.onSelect購読により、FKギズモの非表示もここで連動する)。
+  // コントローラー・ギズモ類を隠す要因は2つあり、どちらか一方でも「隠す」なら隠す。
+  //   (a) 作画資料用のクリーンなビュー(controlsHidden、何もない場所のダブルクリック、2026-07-28)
+  //   (b) 操作対象モデル自身の非表示(モデル欄のチェックボックス、2026-08-03)
+  // 要因ごとに個別へ書き込むと片方だけ更新して食い違うため、状態は必ずこの関数で毎回再計算する
+  // (PHASE6-HANDOFF-5.md §5「状態リセットは専用関数を経由させ、追跡変数への直接代入を避ける」)。
+  //
+  // 隠す対象はIKハンドル(ピン留め中も含む)と、FKギズモ・ボーン選択・ハイライト
+  // (selection.select(null)と同じ経路。GizmoControllerのselection.onSelect購読により連動する)。
   // VRMのボーン選択用マーカー(青い球、指を含む全関節)はIkController/GizmoControllerとは独立した
   // 常時表示のメッシュ(VrmLoader.ts)で、選択中/非選択・アクティブ/非アクティブを問わず全スロット分
-  // 存在するため、ここで別途表示を切り替える(全キャラ分、2026-07-28ユーザー報告により追加)。
+  // 存在するため別途切り替える。非表示スロットのマーカーはroot.visible=falseで既に見えていないので、
+  // ここで見るのはクリーンビューだけでよい。
   // マネキンはpickableMeshes自体が体本体メッシュなので対象外(隠すとモデル自体が消えてしまう)。
-  function setControlsHidden(hidden: boolean): void {
-    controlsHidden = hidden;
-    ikController.setHandlesHidden(hidden);
-    if (hidden) selection.select(null);
+  function refreshControlsVisibility(): void {
+    const hideActiveControls = controlsHidden || !activeCharacter.root.visible;
+    ikController.setHandlesHidden(hideActiveControls);
+    if (hideActiveControls) selection.select(null);
     for (const slot of characterSlots) {
       if (slot.kind !== "vrm") continue;
-      for (const mesh of slot.character.pickableMeshes) mesh.visible = !hidden;
+      for (const mesh of slot.character.pickableMeshes) mesh.visible = !controlsHidden;
     }
+  }
+
+  function setControlsHidden(hidden: boolean): void {
+    controlsHidden = hidden;
+    refreshControlsVisibility();
   }
 
   // カメラ目線: GazeControllerで頭ボーンをカメラへ向ける(マネキン・VRM共通、アクティブなスロットのみ)。
@@ -325,6 +344,50 @@ async function main(): Promise<void> {
   // 小物と自由配置の小物だけに絞る(他キャラクターに持たせている小物は含めない)。
   function propsForSlot(slotId: string): PropInstanceData[] {
     return propController.serialize().filter((p) => p.attachedCharacterId === slotId || p.attachedCharacterId == null);
+  }
+
+  // --- 全身フィット(2026-08-03、ユーザー要望: 起動直後・3面図書き出しで頭と足が切れる) ---
+  // 収める対象は「表示中のキャラクター本体+そのキャラに持たせている小物」(ユーザー判断)。
+  // 自由配置の小物は対象外: 壁(2.0×2.2m)・階段(1.0×1.0×1.4m)のような大型オブジェクトや、
+  // 遠くへ動かした小物に引きずられて人体が極端に小さく写ってしまうため。
+  // 非表示のキャラクターは「いない扱い」の方針どおり構図の判断材料からも外す。
+  function framingTargets(): THREE.Object3D[] {
+    const objects: THREE.Object3D[] = [];
+    const visibleSlotIds = new Set<string>();
+    for (const slot of characterSlots) {
+      if (!slot.character.root.visible) continue;
+      visibleSlotIds.add(slot.id);
+      objects.push(...getBodyMeshes(slot.character));
+    }
+    for (const instance of propController.list()) {
+      if (instance.attachedCharacterId && visibleSlotIds.has(instance.attachedCharacterId)) {
+        objects.push(instance.object);
+      }
+    }
+    return objects;
+  }
+
+  // 多角度書き出し専用: 表示中の全キャラクターではなく「選択されているモデル」だけを対象にする
+  // (2026-08-03、ユーザー報告: モデルを原点から大きく動かした状態で3面図を書き出すと見切れる)。
+  // 原因は視点プリセット(cameraPresets.ts)の注視点が常に原点付近の固定値だったこと。モデルが
+  // そこから離れるほど、frameObjects()で距離を引いても構図の中心からモデルがずれていき、
+  // 最終的に見切れる。このターゲット集合のバウンディングボックス中心を新しい注視点として使う
+  // ことで、モデルの実際の位置にカメラを追従させる(SceneManager.applyCameraPresetのpivot引数)。
+  function activeCharacterFramingTargets(): THREE.Object3D[] {
+    const objects: THREE.Object3D[] = [...getBodyMeshes(activeCharacter)];
+    for (const instance of propController.list()) {
+      if (instance.attachedCharacterId === activeSlotId) objects.push(instance.object);
+    }
+    return objects;
+  }
+
+  // 「キャンバス枠内だけを書き出す」がONのとき、画像に残るのは枠の内側だけなので、フィットの判定
+  // 範囲も同じ割合まで縮めないと枠で見切れる(枠は常に中央揃え、CanvasFrameOverlay.getRect参照)。
+  function framingViewportFraction(cropRect: ExportCropRect | null): { x: number; y: number } | undefined {
+    if (!cropRect) return undefined;
+    const canvas = sceneManager.renderer.domElement;
+    if (canvas.width === 0 || canvas.height === 0) return undefined;
+    return { x: cropRect.width / canvas.width, y: cropRect.height / canvas.height };
   }
 
   function refreshCharacterListUI(): void {
@@ -420,6 +483,10 @@ async function main(): Promise<void> {
   function setCharacterVisibility(id: string, visible: boolean): void {
     const slot = getSlot(id);
     slot.character.root.visible = visible;
+    // 非表示にしたモデルは「いない扱い」に統一する(2026-08-03、ユーザー要望)。クリック判定側は
+    // pickFilter.tsのfilterPickable()がroot.visibleを見て自動的に除外するが、IKハンドル等は
+    // scene直下にあり(IkController)root.visibleの影響を受けないため、ここで明示的に隠す。
+    refreshControlsVisibility();
     refreshCharacterListUI();
   }
 
@@ -524,7 +591,12 @@ async function main(): Promise<void> {
     },
     onCameraPreset(id) {
       const preset = CAMERA_PRESETS.find((p) => p.id === id);
-      if (preset) sceneManager.applyCameraPreset(preset);
+      if (!preset) return;
+      sceneManager.applyCameraPreset(preset);
+      // 全身が収まる距離まで自動で引く(2026-08-03、ユーザー要望)。プリセットの注視点・向きは
+      // 保たれるため、アオリ・俯瞰の構図の意図は変わらない。画面で見ている構図と多角度書き出しの
+      // 結果を一致させる意味もある(書き出し側も同じframeObjects()を通す)。
+      sceneManager.frameObjects(framingTargets());
     },
     onFocalLengthChange(mm) {
       sceneManager.setFocalLength(mm);
@@ -558,9 +630,20 @@ async function main(): Promise<void> {
       const cropRect = cropToFrame ? canvasFrame.getExportPixelRect(sceneManager.renderer.domElement) : null;
       exportViewportPNG(sceneManager, transparent, cropRect);
     },
-    onExportMultiAnglePNG(transparent, cropToFrame, includeTop) {
+    async onExportMultiAnglePNG(transparent, cropToFrame, includeTop) {
+      // 各方向で全身が収まる位置までカメラを動かしてから書き出す(2026-08-03、ユーザー要望)。
+      // 書き出し中にカメラが動くことを明示し、了承を得てから実行する(キャンセルなら書き出さない)。
+      // 書き出し後は従来通り元の構図へ戻すため、作業中の構図は失われない。
+      const proceed = await showConfirmDialog("カメラを全身が映る位置へ移動します。よろしいですか？");
+      if (!proceed) return;
       const cropRect = cropToFrame ? canvasFrame.getExportPixelRect(sceneManager.renderer.domElement) : null;
-      exportMultiAnglePNG(sceneManager, transparent, cropRect, includeTop);
+      const viewportFraction = framingViewportFraction(cropRect);
+      // 「選択されているモデルを中心に」書き出す(2026-08-03、ユーザー要望)。対象は表示中の
+      // 全キャラクターではなく選択中のモデルのみに絞る(activeCharacterFramingTargets参照)。
+      // 注視点(バウンディングボックス中心)・全方向で揃えるカメラ距離はexportMultiAnglePNG側で
+      // 算出する(2026-08-03、ユーザー報告: 前後と左右で書き出し画像のモデルの大きさが揃わない)。
+      const targets = activeCharacterFramingTargets();
+      exportMultiAnglePNG(sceneManager, transparent, cropRect, includeTop, targets, { viewportFraction });
     },
     onSaveCameraView(name) {
       addSavedCamera({ name, ...sceneManager.getCameraState() });
@@ -776,6 +859,10 @@ async function main(): Promise<void> {
   rebuildIkAndPin(activeCharacter);
   sceneManager.setFocalLength(50);
   panel.setFocalLengthDisplay(50);
+  // 起動時のカメラが近すぎて全身が入らない(2026-08-03、ユーザー要望)。焦点距離を確定させた後に
+  // 全身が収まる距離まで引く(fovが決まっていないと必要距離を計算できないため、この順序であること)。
+  // 前回の自動保存を復元する場合は、後段(オートセーブ復元)で保存済みの構図が上書きする。
+  sceneManager.frameObjects(framingTargets());
   sceneManager.setLightDirection(34, 48);
   panel.setBodyShapeDisplay(getActiveSlot().bodyShape);
   panel.setCharacterRotationDisplay(getCharacterYRotationDeg(activeCharacter));

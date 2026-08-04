@@ -5,6 +5,7 @@ import { PROP_DEFS, type PropDef, type PropGripOffset, type PropTypeId } from ".
 import type { BoneName, Side } from "../config/boneDefs";
 import type { Character } from "../character/Character";
 import type { PropInstanceData } from "./PoseSerializer";
+import { filterPickable } from "./pickFilter";
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
@@ -194,8 +195,11 @@ export class PropController {
     this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
+    // 非表示にしているキャラクターに持たせている小物は、親(手ボーン)ごと隠れて見えていないので
+    // クリック対象からも外す(2026-08-03、ユーザー要望「非表示のものはいない扱い」)。
+    // 自由配置の小物はキャラクターの表示状態に関係なく従来通り選択できる。
     const hits = this.raycaster.intersectObjects(
-      this.instances.map((i) => i.object),
+      filterPickable(this.instances.map((i) => i.object)),
       true,
     );
     const hitInstance = hits.length > 0 ? this.findInstanceForHit(hits[0].object) : undefined;
