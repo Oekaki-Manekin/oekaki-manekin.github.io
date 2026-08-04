@@ -13,6 +13,7 @@ import {
 } from "./IkSolver";
 import type { Character } from "../character/Character";
 import type { SelectionController } from "./SelectionController";
+import { filterPickable } from "./pickFilter";
 
 const _tmpVec = new THREE.Vector3();
 
@@ -445,7 +446,10 @@ export class IkController {
     );
     const raycaster = new THREE.Raycaster();
     raycaster.setFromCamera(pointer, this.transformControls.camera);
-    const meshes = this.handles.map((h) => h.mesh);
+    // 隠れているハンドルは掴めないようにする。three.jsのRaycasterはvisibleを見ないため、除外しないと
+    // 「見えていないハンドルをクリックしてギズモだけが出る」状態になる(2026-08-03、ユーザー要望への対応。
+    // 非表示モデル・クリーンビューのどちらでハンドルが隠れている場合も同じ扱いになる)。
+    const meshes = filterPickable(this.handles.map((h) => h.mesh));
     const hits = raycaster.intersectObjects(meshes, false);
     if (hits.length > 0) {
       const entry = this.meshToHandle.get(hits[0].object as THREE.Mesh);

@@ -12,6 +12,7 @@ import { CANVAS_FRAME_PRESETS, type CanvasFramePresetId } from "./CanvasFrameOve
 import { PropPanel, type PropPanelCallbacks } from "./PropPanel";
 import type { PropInstance, GizmoMode } from "../posing/PropController";
 import { storage } from "../io/platform";
+import { LOCKED_TOOLTIP, SECTION_NOTES, sectionState, type SectionKey } from "../config/featureFlags";
 import {
   BUILD_LABELS,
   BASE_LABELS,
@@ -121,7 +122,14 @@ function applyAccentColor(color: string): void {
   storage.set(ACCENT_COLOR_STORAGE_KEY, color);
 }
 
-function section(titleText: string): { section: HTMLElement; body: HTMLElement } {
+/**
+ * パネルのセクション(見出し+折りたたみ可能な本体)を生成し、parentへ追加して返す。
+ *
+ * 生成と同時にparentへ追加するのは、段階公開フラグが "hidden" のセクションを「作るが追加しない」で
+ * 落とせるようにするため(2026-08-03追加)。呼び出し順=表示順になるため、呼び出し側は生成順に並べる
+ * だけでよい。公開状態の詳細はconfig/featureFlags.tsを参照。
+ */
+function section(parent: HTMLElement, titleText: SectionKey): { section: HTMLElement; body: HTMLElement } {
   const sec = document.createElement("section");
   sec.className = "panel-section";
 
@@ -140,14 +148,38 @@ function section(titleText: string): { section: HTMLElement; body: HTMLElement }
   body.className = "panel-section__body";
   sec.appendChild(body);
 
-  sec.classList.toggle("panel-section--collapsed", collapsedSectionTitles.has(titleText));
-  header.addEventListener("click", () => {
-    const collapsed = !sec.classList.contains("panel-section--collapsed");
-    sec.classList.toggle("panel-section--collapsed", collapsed);
-    if (collapsed) collapsedSectionTitles.add(titleText);
-    else collapsedSectionTitles.delete(titleText);
-    saveCollapsedSectionTitles();
-  });
+  const state = sectionState(titleText);
+  if (state === "public") {
+    sec.classList.toggle("panel-section--collapsed", collapsedSectionTitles.has(titleText));
+    header.addEventListener("click", () => {
+      const collapsed = !sec.classList.contains("panel-section--collapsed");
+      sec.classList.toggle("panel-section--collapsed", collapsed);
+      if (collapsed) collapsedSectionTitles.add(titleText);
+      else collapsedSectionTitles.delete(titleText);
+      saveCollapsedSectionTitles();
+    });
+  } else {
+    // 未公開: 常に閉じたままにし、開閉リスナーも登録しない(=絶対に開かない・開閉状態も保存されない)。
+    // 公開へ切り替えた時点で、それまでにユーザーが保存していた開閉状態がそのまま復活する。
+    sec.classList.add("panel-section--locked", "panel-section--collapsed");
+    header.title = LOCKED_TOOLTIP;
+    const badge = document.createElement("span");
+    badge.className = "panel-section__badge";
+    badge.textContent = "準備中";
+    header.insertBefore(badge, chevron);
+    const note = SECTION_NOTES[titleText];
+    if (note) {
+      const noteEl = document.createElement("div");
+      noteEl.className = "panel-section__note";
+      noteEl.textContent = note;
+      // bodyは--collapsedで隠れるため、予告文は見出しと同じ階層(sec直下)に置く。
+      sec.appendChild(noteEl);
+    }
+  }
+
+  // "hidden" はDOMごと出さない。UI要素の生成自体はpublicと全く同じに行っているため、
+  // main.tsから呼ばれる各setter(setGridVisible等)はここで落としても問題なく動く。
+  if (state !== "hidden") parent.appendChild(sec);
 
   return { section: sec, body };
 }
@@ -233,7 +265,7 @@ export class PanelUI {
     // --- キャラクター(フェーズ6・(B)複数体配置) ---
     // 開発指示書上は「2体まで」だったが、事前相談の結果、内部実装はN体対応・UI上限のみ4体とした
     // (main.tsのMAX_CHARACTER_SLOTSと合わせる。上限自体はcanAddの形でmain.ts側から渡される)。
-    const charSec = section("キャラクター");
+    const charSec = section(this.element, "キャラクター");
 
     this.characterListBody = document.createElement("div");
     this.characterListBody.className = "character-chip-row";
@@ -294,10 +326,8 @@ export class PanelUI {
       rotationEditing = false;
     });
 
-    this.element.appendChild(charSec.section);
-
     // --- 体型(フェーズ6(C)、マネキンのみ対象。VRM選択中はsetBodyShapeControlsEnabled(false)で無効化) ---
-    const bodySec = section("体型");
+    const bodySec = section(this.element, "体型");
 
     const baseRow = document.createElement("div");
     baseRow.className = "button-row";
@@ -361,10 +391,8 @@ export class PanelUI {
       headCountEditing = false;
     });
 
-    this.element.appendChild(bodySec.section);
-
     // --- カメラ ---
-    const cam = section("カメラ・表示");
+    const cam = section(this.element, "カメラ・表示");
     const presetRow = document.createElement("div");
     presetRow.className = "button-row";
     const cameraPresetButtons: HTMLButtonElement[] = [];
@@ -598,10 +626,8 @@ export class PanelUI {
     this.savedCameraPanel = new SavedCameraPanel(callbacks);
     cam.body.appendChild(this.savedCameraPanel.element);
 
-    this.element.appendChild(cam.section);
-
     // --- ライティング ---
-    const lightSec = section("ライティング");
+    const lightSec = section(this.element, "ライティング");
 
     const azimuthRow = document.createElement("div");
     azimuthRow.className = "slider-row";
@@ -663,31 +689,26 @@ export class PanelUI {
     shadowLabel.appendChild(document.createTextNode("影を表示"));
     lightSec.body.appendChild(shadowLabel);
 
-    this.element.appendChild(lightSec.section);
-
     // --- 小物(フェーズ6・(A)) ---
-    const propSec = section("小物");
+    const propSec = section(this.element, "小物");
     this.propPanel = new PropPanel(callbacks);
     propSec.body.appendChild(this.propPanel.element);
-    this.element.appendChild(propSec.section);
 
     // --- 部位リスト ---
-    const jointSec = section("部位");
+    const jointSec = section(this.element, "部位");
     this.jointList = new JointListPanel((name) => callbacks.onSelectBone(name));
     jointSec.body.appendChild(this.jointList.element);
-    this.element.appendChild(jointSec.section);
 
     // --- インスペクタ ---
-    const inspectorSec = section("選択中の部位");
+    const inspectorSec = section(this.element, "選択中の部位");
     this.inspector = new JointInspector(
       () => callbacks.onBeginEdit(),
       (name, euler) => callbacks.onEulerChange(name, euler),
     );
     inspectorSec.body.appendChild(this.inspector.element);
-    this.element.appendChild(inspectorSec.section);
 
     // --- IK・ピン留め ---
-    const ikSec = section("IK・ピン留め");
+    const ikSec = section(this.element, "IK・ピン留め");
     this.ikModeBtn = document.createElement("button");
     this.ikModeBtn.type = "button";
     this.setIkModeButtonLabel(false);
@@ -727,22 +748,19 @@ export class PanelUI {
       ikSec.body.appendChild(label);
       this.pinCheckboxes.set(effector, checkbox);
     }
-    this.element.appendChild(ikSec.section);
 
     // --- 指ポーズ ---
-    const fingerSec = section("指ポーズ");
+    const fingerSec = section(this.element, "指ポーズ");
     this.fingerPanel = new FingerPanel(callbacks);
     fingerSec.body.appendChild(this.fingerPanel.element);
-    this.element.appendChild(fingerSec.section);
 
     // --- ポーズライブラリ(プリセット・部分合成・補間) ---
-    const libSec = section("ポーズライブラリ");
+    const libSec = section(this.element, "ポーズライブラリ");
     this.poseLibraryPanel = new PoseLibraryPanel(callbacks);
     libSec.body.appendChild(this.poseLibraryPanel.element);
-    this.element.appendChild(libSec.section);
 
     // --- ポーズ操作 ---
-    const poseSec = section("ポーズ操作");
+    const poseSec = section(this.element, "ポーズ操作");
     const opRow1 = document.createElement("div");
     opRow1.className = "button-row";
     const mirrorBtn = document.createElement("button");
@@ -805,10 +823,8 @@ export class PanelUI {
     gizmoSizeRow.appendChild(gizmoSizeInput);
     poseSec.body.appendChild(gizmoSizeRow);
 
-    this.element.appendChild(poseSec.section);
-
     // --- 保存・読込・書き出し ---
-    const ioSec = section("保存・書き出し");
+    const ioSec = section(this.element, "保存・書き出し");
     const ioRow = document.createElement("div");
     ioRow.className = "button-row";
     const saveBtn = document.createElement("button");
@@ -867,8 +883,6 @@ export class PanelUI {
       ),
     );
     ioSec.body.appendChild(multiAngleBtn);
-
-    this.element.appendChild(ioSec.section);
   }
 
   setSelectedBone(name: BoneName | null, euler: EulerDeg | null): void {

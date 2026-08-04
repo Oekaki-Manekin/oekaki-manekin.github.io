@@ -249,6 +249,38 @@ body,
   display: none;
 }
 
+/* 段階公開で未公開(featureFlags.tsが "locked"/"hidden")のセクション(2026-08-03追加)。
+   見出しとシェブロンをグレーアウトし、クリックできない見た目にする。開閉リスナー自体が
+   登録されないため(PanelUI.ts)、ここでの指定はあくまで見た目の裏付け。 */
+.panel-section--locked > .panel-section__header {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* 通常セクションのhover反応(見出しが明るくなる)を打ち消し、押せそうに見せない。 */
+.panel-section--locked > .panel-section__header:hover h3 {
+  color: #aaa;
+}
+
+.panel-section__badge {
+  margin-left: auto;
+  padding: 1px 6px;
+  border: 1px solid #46464e;
+  border-radius: 8px;
+  font-size: 10px;
+  color: #888;
+  white-space: nowrap;
+}
+
+/* 未公開セクションの予告文(featureFlags.tsのSECTION_NOTESを設定した場合のみ出る)。
+   bodyは--collapsedで隠れてしまうため、section直下に置いている。 */
+.panel-section__note {
+  margin-top: 4px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #777;
+}
+
 .button-row {
   display: flex;
   flex-wrap: wrap;
