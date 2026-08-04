@@ -54,7 +54,7 @@ export const SECTION_FLAGS: Record<SectionKey, FeatureState> = {
   選択中の部位: "public",
   "IK・ピン留め": "public",
   指ポーズ: "public",
-  ポーズライブラリ: "public",
+  ポーズライブラリ: "locked",
   ポーズ操作: "public",
   "保存・書き出し": "public",
 };
