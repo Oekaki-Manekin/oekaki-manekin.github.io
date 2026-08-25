@@ -5,6 +5,7 @@ import { PROP_DEFS, type PropDef, type PropGripOffset, type PropTypeId } from ".
 import type { BoneName, Side } from "../config/boneDefs";
 import type { Character } from "../character/Character";
 import type { PropInstanceData } from "./PoseSerializer";
+import { setBaseColor } from "../scene/DisplayModeMaterials";
 import { filterPickable } from "./pickFilter";
 
 const DEG2RAD = Math.PI / 180;
@@ -159,8 +160,11 @@ export class PropController {
 
     this.transformControls.addEventListener("dragging-changed", (event) => {
       orbitControls.enabled = !event.value;
-      // 自身のギズモ操作終了直後、そのままクリックとして再解釈され選択が暴れるのを防ぐ
-      if (!event.value) this.suppressNextClick = true;
+      // 自身のギズモ操作に伴うpointerupがクリックとして再解釈され、選択が暴れるのを防ぐ。
+      // 立てるのはドラッグ「開始」時(pointerdown)であること。終了時(pointerup)に立てると、
+      // 同じpointerupを既に処理し終えたクリック判定には間に合わず、代わりに次の正当なクリックを
+      // 飲み込んでしまう(main.tsのsuppressNextRaycastAll参照)。
+      if (event.value) this.suppressNextClick = true;
     });
 
     domElement.addEventListener("pointerdown", this.handlePointerDown);
@@ -172,7 +176,10 @@ export class PropController {
     this.changeListeners.push(cb);
   }
 
-  /** 他のTransformControls操作直後の余分なクリック判定を1回だけ無視する(SelectionControllerと同じ理由)。 */
+  /**
+   * ギズモ・ハンドルのドラッグに伴う余分なクリック判定を1回だけ無視する(SelectionControllerと同じ理由)。
+   * 呼ぶのはドラッグ「開始」時であること(main.tsのsuppressNextRaycastAll参照)。
+   */
   suppressNextRaycast(): void {
     this.suppressNextClick = true;
   }
@@ -182,14 +189,15 @@ export class PropController {
   };
 
   private handlePointerUp = (e: PointerEvent): void => {
-    const dx = e.clientX - this.pointerDownPos.x;
-    const dy = e.clientY - this.pointerDownPos.y;
-    // ドラッグ(カメラ操作/ギズモ操作)とクリックを区別する
-    if (Math.hypot(dx, dy) > 4) return;
+    // 抑制フラグの消費は他のどの判定よりも先に行う(SelectionControllerと同じ理由)。
     if (this.suppressNextClick) {
       this.suppressNextClick = false;
       return;
     }
+    const dx = e.clientX - this.pointerDownPos.x;
+    const dy = e.clientY - this.pointerDownPos.y;
+    // ドラッグ(カメラ操作/ギズモ操作)とクリックを区別する
+    if (Math.hypot(dx, dy) > 4) return;
 
     const rect = this.domElement.getBoundingClientRect();
     this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
@@ -250,16 +258,22 @@ export class PropController {
     return instance;
   }
 
-  /** 選択中の小物の全パーツの色を一括変更する(標準カラーピッカー用、2026-07-27ユーザー要望)。 */
+  /**
+   * 選択中の小物の全パーツの色を一括変更する(標準カラーピッカー用、2026-07-27ユーザー要望)。
+   * 反映はsetBaseColor()経由で行う。表示モード中はmesh.materialが差し替えられており、
+   * 特にシルエットは全メッシュ共有の単一マテリアルのため、直接書き換えるとシーン全体が
+   * 染まって戻らなくなる(DisplayModeMaterials.setBaseColorのコメント参照)。
+   */
   setColor(id: string, hex: number): void {
     const instance = this.instances.find((i) => i.id === id);
     if (!instance) return;
     instance.colorOverride = hex;
+    const meshes: THREE.Mesh[] = [];
     instance.object.traverse((obj) => {
       const mesh = obj as THREE.Mesh;
-      if (!mesh.isMesh) return;
-      (mesh.material as THREE.MeshStandardMaterial).color.setHex(hex);
+      if (mesh.isMesh) meshes.push(mesh);
     });
+    setBaseColor(meshes, hex);
   }
 
   remove(id: string): void {

@@ -36,11 +36,18 @@ export function loadPoseLibrary(): SavedPose[] {
   }
 }
 
-function savePoseLibrary(poses: SavedPose[]): void {
-  storage.set(KEY, JSON.stringify(poses));
+function savePoseLibrary(poses: SavedPose[]): boolean {
+  return storage.set(KEY, JSON.stringify(poses));
 }
 
-export function addSavedPose(entry: Omit<SavedPose, "id" | "createdAt">): SavedPose {
+/**
+ * ポーズをライブラリへ追加する。保存に成功したかどうかを返す。
+ * サムネイル(dataURL)を同梱するため容量を食いやすく、localStorageの上限に達すると保存できない。
+ * 明示的なユーザー操作なので、falseが返ったらUI側で必ず理由を伝えること
+ * (かつては成否に関わらずオブジェクトを返しており、「保存を押したのに一覧に出ない」だけが
+ *  起きていた。2026-08-18検出)。
+ */
+export function addSavedPose(entry: Omit<SavedPose, "id" | "createdAt">): boolean {
   const saved: SavedPose = {
     ...entry,
     id: `pose_${Date.now()}`,
@@ -48,18 +55,17 @@ export function addSavedPose(entry: Omit<SavedPose, "id" | "createdAt">): SavedP
   };
   const poses = loadPoseLibrary();
   poses.push(saved);
-  savePoseLibrary(poses);
-  return saved;
+  return savePoseLibrary(poses);
 }
 
 export function removeSavedPose(id: string): void {
   savePoseLibrary(loadPoseLibrary().filter((p) => p.id !== id));
 }
 
-export function renameSavedPose(id: string, name: string): void {
+export function renameSavedPose(id: string, name: string): boolean {
   const poses = loadPoseLibrary();
   const target = poses.find((p) => p.id === id);
-  if (!target) return;
+  if (!target) return true;
   target.name = name;
-  savePoseLibrary(poses);
+  return savePoseLibrary(poses);
 }

@@ -314,5 +314,8 @@ export function buildMannequin(): Mannequin {
     }
   };
 
-  return { kind: "mannequin", root, bones, pickableMeshes, setHighlighted, dispose };
+  // 全身リセットで腰の位置を戻すための基準(Character.restHipsPosition参照)。
+  // 体型変更(BodyShapeApplier)はhipsを意図的にスケール対象外にしているため、生成直後の値のままでよい。
+  const restHipsPosition = bones.hips?.position.clone();
+  return { kind: "mannequin", root, bones, pickableMeshes, restHipsPosition, setHighlighted, dispose };
 }

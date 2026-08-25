@@ -124,6 +124,9 @@ export async function loadVrmCharacter(buffer: ArrayBuffer): Promise<VrmCharacte
     root: vrm.scene,
     bones,
     pickableMeshes,
+    // 全身リセットで腰の位置を戻すための基準(Character.restHipsPosition参照)。
+    // VRMは寸法がモデルごとに違うため、マネキン基準の定数ではなく読み込み時の実値を憶えておく。
+    restHipsPosition: bones.hips?.position.clone(),
     setHighlighted,
     dispose,
     vrm,

@@ -1,4 +1,5 @@
 import { SHORTCUTS } from "../config/shortcuts";
+import { popModal, pushModal } from "./modalState";
 
 export class ShortcutHelp {
   readonly element: HTMLElement;
@@ -44,13 +45,24 @@ export class ShortcutHelp {
     this.visible ? this.hide() : this.show();
   }
 
+  /** 表示中かどうか。main.ts側がEscでの閉じ操作を振り分けるために参照する。 */
+  get isVisible(): boolean {
+    return this.visible;
+  }
+
+  // show/hideはボタン・オーバーレイクリック・キー操作の複数経路から呼ばれるため、
+  // 状態が変わるときだけmodalStateを更新する(冪等にしないとカウンタがずれる)。
   show(): void {
+    if (this.visible) return;
     this.visible = true;
+    pushModal();
     this.element.classList.remove("modal-overlay--hidden");
   }
 
   hide(): void {
+    if (!this.visible) return;
     this.visible = false;
+    popModal();
     this.element.classList.add("modal-overlay--hidden");
   }
 }

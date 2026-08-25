@@ -22,6 +22,8 @@ export class GroundContactIndicator {
   private visible = false;
   private badges: Record<FootEffector, HTMLElement>;
   private tmpVec = new THREE.Vector3();
+  private tmpForward = new THREE.Vector3();
+  private tmpToBone = new THREE.Vector3();
 
   constructor(container: HTMLElement) {
     this.container = container;
@@ -79,7 +81,23 @@ export class GroundContactIndicator {
         continue;
       }
 
+      // 接地判定(groundGap)はここまでで済ませてあり、以降は「バッジを出すかどうか」だけを決める。
+      // カメラ背後の点はVector3.project()がwで除算する際にNDCの符号が反転するため、
+      // そのまま位置に使うと画面の反対側の見当違いな場所にバッジが出る(EyeLevelLine.tsが同じ投影で
+      // 踏んだw成分の問題と同種。2026-08-18修正)。内積で背後を判定して除外する。
+      camera.getWorldDirection(this.tmpForward);
+      this.tmpToBone.copy(this.tmpVec).sub(camera.position);
+      if (this.tmpToBone.dot(this.tmpForward) <= 0) {
+        badge.style.display = "none";
+        continue;
+      }
+
       this.tmpVec.project(camera);
+      // 視錐台の外(画面外)の足はそもそも見えていないため警告を出さない。
+      if (Math.abs(this.tmpVec.x) > 1 || Math.abs(this.tmpVec.y) > 1) {
+        badge.style.display = "none";
+        continue;
+      }
       badge.style.left = `${(this.tmpVec.x * 0.5 + 0.5) * cw}px`;
       badge.style.top = `${(1 - (this.tmpVec.y * 0.5 + 0.5)) * ch}px`;
       badge.classList.toggle("ground-contact-badge--float", state === "float");

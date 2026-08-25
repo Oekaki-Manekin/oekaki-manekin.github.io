@@ -16,6 +16,14 @@ export interface Character {
    * ポーズ操作対象にしている場合はそちらのルートを指定する。未指定時は`root`を使う。
    */
   readonly matrixRoot?: THREE.Object3D;
+  /**
+   * 生成・読み込み直後(=ポーズ操作前)のhipsのローカル位置。
+   * hipsだけは紫のIKハンドルでユーザーが動かせる=ポーズの一部なので、全身リセット時に
+   * ここへ戻す(PoseReset.resetAll)。マネキンはボーン定義の既定値と一致するが、VRMは
+   * モデルごとに寸法が異なり定数を当てはめると腰が飛ぶため、読み込み時の実値を憶えておく。
+   * hipsを持たないキャラクターは未設定。
+   */
+  readonly restHipsPosition?: THREE.Vector3;
   setHighlighted(boneName: BoneName | null): void;
   dispose(): void;
 }

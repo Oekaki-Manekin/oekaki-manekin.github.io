@@ -39,22 +39,30 @@ function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-/** 表示中のビューをPNGとしてダウンロードする */
-export function exportViewportPNG(
+/**
+ * 表示中のビューをPNGとしてダウンロードする。
+ * 完了(コントローラーの復元まで)を待てるようPromiseを返す。呼び出し側はこれをawaitして
+ * 書き出しの排他制御を行うこと(main.tsのrunExclusiveExport参照)。
+ */
+export async function exportViewportPNG(
   sceneManager: SceneManager,
   transparent: boolean,
   cropRect?: ExportCropRect | null,
-): void {
+): Promise<void> {
   sceneManager.setBackgroundTransparent(transparent);
   // ギズモ・IKハンドル・光源マーカー等のコントローラー類は作画資料として不要なため、書き出し中だけ隠す
   // (2026-08-03、ユーザー要望)。
   sceneManager.hideControllersForExport();
-  renderToBlob(sceneManager, cropRect).then((blob) => {
+  try {
+    const blob = await renderToBlob(sceneManager, cropRect);
+    if (blob) downloadBlob(`pose_${timestamp()}.png`, blob);
+  } finally {
+    // toBlob()が失敗・例外になってもコントローラーが隠れたまま残らないようfinallyで戻す
+    // (多角度書き出し側と揃える)。
     sceneManager.restoreControllersVisibility();
     sceneManager.setBackgroundTransparent(false);
     sceneManager.renderNow();
-    if (blob) downloadBlob(`pose_${timestamp()}.png`, blob);
-  });
+  }
 }
 
 const MULTI_ANGLE_PRESET_IDS = ["front", "left", "right", "back"] as const;

@@ -81,6 +81,8 @@ export interface PanelCallbacks extends FingerPanelCallbacks, PoseLibraryCallbac
   onToggleIkMode(enabled: boolean): void;
   onTogglePin(effector: LimbEffector, pinned: boolean): void;
   onToggleGaze(enabled: boolean): void;
+  /** 瞳のみカメラに追従させる(首・頭は動かさない、gazeEnabledとは独立)。2026-08-17追加。 */
+  onToggleEyeGaze(enabled: boolean): void;
 }
 
 // セクションの開閉状態(見出しテキストをキーにする)。将来UIを縦積み以外の配置(上部バー等)に
@@ -203,6 +205,13 @@ export class PanelUI {
   private characterListBody!: HTMLElement;
   private addMannequinBtn!: HTMLButtonElement;
   private openVrmBtn!: HTMLButtonElement;
+  // キャラクター追加ボタンを止める要因は2つあり(上限に達している/読み込み中)、どちらか一方でも
+  // 「止める」なら止める。要因ごとにdisabledへ直接書き込むと片方だけ更新して食い違うため、
+  // 状態は必ずapplyCharacterAddButtonState()で毎回再計算する。
+  private canAddCharacters = true;
+  private characterAddBusy = false;
+  private exportBtn!: HTMLButtonElement;
+  private multiAngleBtn!: HTMLButtonElement;
   private characterRotationInput!: HTMLInputElement;
   private characterRotationLabel!: HTMLElement;
   private headCountInput!: HTMLInputElement;
@@ -212,6 +221,7 @@ export class PanelUI {
   private bodyShapeControls: (HTMLInputElement | HTMLButtonElement)[] = [];
   private ikModeBtn!: HTMLButtonElement;
   private gazeCheckbox!: HTMLInputElement;
+  private eyeGazeCheckbox!: HTMLInputElement;
   private lightAzimuthInput!: HTMLInputElement;
   private lightElevationInput!: HTMLInputElement;
   private lightAzimuthLabel!: HTMLElement;
@@ -232,7 +242,7 @@ export class PanelUI {
     const titleGroup = document.createElement("div");
     titleGroup.className = "panel__title-group";
     const title = document.createElement("h1");
-    title.textContent = "3Dポーザー";
+    title.textContent = "お絵かき招金";
     titleGroup.appendChild(title);
 
     const currentAccent = loadAccentColor();
@@ -732,6 +742,17 @@ export class PanelUI {
     gazeLabel.appendChild(document.createTextNode("カメラ目線(頭をカメラに向ける)"));
     ikSec.body.appendChild(gazeLabel);
 
+    // 「頭は固定したまま瞳だけカメラを追わせたい」という要望への対応(2026-08-17)。
+    // 上のgazeCheckboxとは独立で、VRMのみ効果がある(マネキンには瞳が存在しないため見た目の変化はない)。
+    const eyeGazeLabel = document.createElement("label");
+    eyeGazeLabel.className = "checkbox-row";
+    this.eyeGazeCheckbox = document.createElement("input");
+    this.eyeGazeCheckbox.type = "checkbox";
+    this.eyeGazeCheckbox.addEventListener("change", () => callbacks.onToggleEyeGaze(this.eyeGazeCheckbox.checked));
+    eyeGazeLabel.appendChild(this.eyeGazeCheckbox);
+    eyeGazeLabel.appendChild(document.createTextNode("瞳のみカメラ目線(首・頭は固定、VRMのみ)"));
+    ikSec.body.appendChild(eyeGazeLabel);
+
     const pinTitle = document.createElement("div");
     pinTitle.className = "joint-list__group-title";
     pinTitle.textContent = "ピン留め(位置を固定)";
@@ -855,14 +876,14 @@ export class PanelUI {
     cropLabel.appendChild(document.createTextNode("キャンバス枠内だけを書き出す"));
     ioSec.body.appendChild(cropLabel);
 
-    const exportBtn = document.createElement("button");
-    exportBtn.type = "button";
-    exportBtn.className = "button--primary";
-    exportBtn.textContent = "PNG書き出し";
-    exportBtn.addEventListener("click", () =>
+    this.exportBtn = document.createElement("button");
+    this.exportBtn.type = "button";
+    this.exportBtn.className = "button--primary";
+    this.exportBtn.textContent = "PNG書き出し";
+    this.exportBtn.addEventListener("click", () =>
       callbacks.onExportPNG(this.transparentCheckbox.checked, this.cropToFrameCheckbox.checked),
     );
-    ioSec.body.appendChild(exportBtn);
+    ioSec.body.appendChild(this.exportBtn);
 
     const includeTopLabel = document.createElement("label");
     includeTopLabel.className = "checkbox-row";
@@ -872,17 +893,17 @@ export class PanelUI {
     includeTopLabel.appendChild(document.createTextNode("多角度書き出しに俯瞰も含める"));
     ioSec.body.appendChild(includeTopLabel);
 
-    const multiAngleBtn = document.createElement("button");
-    multiAngleBtn.type = "button";
-    multiAngleBtn.textContent = "多角度書き出し(正面/左右/背面)";
-    multiAngleBtn.addEventListener("click", () =>
+    this.multiAngleBtn = document.createElement("button");
+    this.multiAngleBtn.type = "button";
+    this.multiAngleBtn.textContent = "多角度書き出し(正面/左右/背面)";
+    this.multiAngleBtn.addEventListener("click", () =>
       callbacks.onExportMultiAnglePNG(
         this.transparentCheckbox.checked,
         this.cropToFrameCheckbox.checked,
         includeTopCheckbox.checked,
       ),
     );
-    ioSec.body.appendChild(multiAngleBtn);
+    ioSec.body.appendChild(this.multiAngleBtn);
   }
 
   setSelectedBone(name: BoneName | null, euler: EulerDeg | null): void {
@@ -962,8 +983,33 @@ export class PanelUI {
 
       this.characterListBody.appendChild(chip);
     });
-    this.addMannequinBtn.disabled = !canAdd;
-    this.openVrmBtn.disabled = !canAdd;
+    this.canAddCharacters = canAdd;
+    this.applyCharacterAddButtonState();
+  }
+
+  /**
+   * VRM読み込み中など、キャラクター追加操作を一時的に受け付けない状態を反映する。
+   * 上限判定(refreshCharacterListのcanAdd)とは別要因のため、両方を見て再計算する。
+   */
+  setCharacterAddBusy(busy: boolean): void {
+    this.characterAddBusy = busy;
+    this.applyCharacterAddButtonState();
+  }
+
+  private applyCharacterAddButtonState(): void {
+    const disabled = !this.canAddCharacters || this.characterAddBusy;
+    this.addMannequinBtn.disabled = disabled;
+    this.openVrmBtn.disabled = disabled;
+  }
+
+  /**
+   * 書き出しボタンの有効/無効を切り替える(書き出し中は押せなくする)。
+   * 書き出しの排他制御そのものはmain.ts側のフラグで行い、ここは見た目の反映のみ
+   * (ボタンのdisabledだけに頼るとキーボード操作や連打のタイミングで抜けうるため)。
+   */
+  setExportButtonsEnabled(enabled: boolean): void {
+    this.exportBtn.disabled = !enabled;
+    this.multiAngleBtn.disabled = !enabled;
   }
 
   /** アクティブなキャラクターの向き(root.rotation.y、度)をスライダー表示に反映する。 */
@@ -996,6 +1042,10 @@ export class PanelUI {
 
   setGazeEnabled(enabled: boolean): void {
     this.gazeCheckbox.checked = enabled;
+  }
+
+  setEyeGazeEnabled(enabled: boolean): void {
+    this.eyeGazeCheckbox.checked = enabled;
   }
 
   /** 3Dビュー上でドラッグハンドルを操作した際、方位・高さスライダーの表示を同期する */

@@ -14,6 +14,12 @@ export interface EmptySpaceTargetsProvider {
  * 小物のどれにもヒットしない場所と定義し、そこでのダブルクリックを`onEmptyDoubleClick`で通知する
  * (実際に隠す処理はmain.ts側、IkController.setHandlesHidden()・selection.select(null)経由)。
  * 逆に、隠れている間に何かへヒットする通常クリックがあれば`onAnyHit`で再表示を促す。
+ *
+ * 【重要】このクラスのpointerupは、他のクリック判定(SelectionController/PropController/
+ * CrossCharacterSelector/IkController)より先に走らせること。同一要素のリスナーは登録順に走るため、
+ * main.tsではこのコントローラーを他より先に生成している(理由はmain.tsの生成箇所のコメント参照)。
+ * 先に解除しておくことで、クリーンビュー中に隠していたVRMのボーン選択マーカーが同じクリックの
+ * 選択判定に間に合い、「解除」と「選択」が1クリックで完了する。
  */
 export class EmptySpaceClickController {
   private raycaster = new THREE.Raycaster();

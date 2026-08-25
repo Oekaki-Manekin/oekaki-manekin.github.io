@@ -14,14 +14,19 @@ export function loadCustomFingerPresets(): FingerPreset[] {
   }
 }
 
-function saveCustomFingerPresets(presets: FingerPreset[]): void {
-  storage.set(CUSTOM_FINGER_PRESETS_KEY, JSON.stringify(presets));
+function saveCustomFingerPresets(presets: FingerPreset[]): boolean {
+  return storage.set(CUSTOM_FINGER_PRESETS_KEY, JSON.stringify(presets));
 }
 
-export function addCustomFingerPreset(preset: FingerPreset): void {
+/**
+ * 自作の指プリセットを追加する。保存に成功したかどうかを返す。
+ * 明示的なユーザー操作なので、falseが返ったらUI側で必ず理由を伝えること
+ * (poseLibraryStorage.addSavedPoseと同じ理由)。
+ */
+export function addCustomFingerPreset(preset: FingerPreset): boolean {
   const presets = loadCustomFingerPresets();
   presets.push({ ...preset, custom: true });
-  saveCustomFingerPresets(presets);
+  return saveCustomFingerPresets(presets);
 }
 
 export function removeCustomFingerPreset(id: string): void {

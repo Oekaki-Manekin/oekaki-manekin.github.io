@@ -50,8 +50,10 @@ export class GizmoController {
     this.transformControls.addEventListener("dragging-changed", (event) => {
       orbitControls.enabled = !event.value;
       this.isDragging = Boolean(event.value);
+      // クリック判定の抑制はここでは行わない。抑制先が selection だけでは足りず(小物・キャラ切替の
+      // クリック判定も同じpointerupを拾う)、また終了時=pointerupに立てるのでは間に合わないため、
+      // ドラッグ開始時にmain.tsのsuppressNextRaycastAll()で全系統へまとめて立てる。
       if (!event.value) {
-        this.selection.suppressNextRaycast();
         for (const cb of this.dragEndListeners) cb();
       }
     });
