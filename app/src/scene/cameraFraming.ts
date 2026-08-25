@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { isEffectivelyVisible } from "../posing/pickFilter";
 
 // 全身が画面に収まる距離を求める共通ロジック(2026-08-03、ユーザー要望)。
 // 起動時の初期カメラ・視点プリセットボタン・多角度PNG書き出しの3経路から共有する。
@@ -55,6 +56,12 @@ export function computeFitDistance(
 
   _box.makeEmpty();
   for (const object of objects) {
+    // 非表示のオブジェクトは「いない扱い」の方針どおり構図の判断材料から外す(2026-08-03の方針)。
+    // three.jsのBox3.expandByObject()はRaycasterと同様にvisibleを一切見ない(updateWorldMatrixを
+    // 呼んでジオメトリで箱を広げ、子を無条件に再帰するだけ)ため、ここで明示的に除外する必要がある
+    // (pickFilter.tsがRaycasterについて解決しているのと全く同じ問題。フィルタを呼び出し側ではなく
+    //  この関数の内側に置いてあるのは、framingの呼び出し箇所が増えても書き忘れが起きないようにするため)。
+    if (!isEffectivelyVisible(object)) continue;
     // Box3.expandByObject()は対象自身と子のワールド行列しか更新しないため、祖先の行列が古いままだと
     // 誤った位置で囲ってしまう。先に祖先まで含めて更新しておく
     // (rAFが止まる検証環境では特に、直前の位置変更が行列へ反映されていないことがある)。
@@ -111,6 +118,8 @@ export function computeFitDistance(
 export function computeBoundsCenter(objects: readonly THREE.Object3D[]): THREE.Vector3 | null {
   _box.makeEmpty();
   for (const object of objects) {
+    // 非表示のオブジェクトを外す理由はcomputeFitDistance()のコメント参照(Box3はvisibleを見ない)。
+    if (!isEffectivelyVisible(object)) continue;
     object.updateWorldMatrix(true, false);
     // precise=trueが必須の理由はcomputeFitDistance()のコメント参照(VRMのSkinnedMeshはバインド
     // ポーズの静的boundingBoxのままだとポーズの変化を反映しない)。

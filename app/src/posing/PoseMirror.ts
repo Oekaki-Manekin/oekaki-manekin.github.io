@@ -20,4 +20,10 @@ export function mirrorPose(bones: Partial<Record<BoneName, THREE.Object3D>>): vo
     if (!src) continue;
     bone.quaternion.set(src.x, -src.y, -src.z, src.w);
   }
+  // 腰の左右位置もミラーする。腰だけは紫のIKハンドルでユーザーが動かせる=ポーズの一部であり、
+  // ここを据え置くと「腕と脚は入れ替わるのに腰の横位置だけ元のまま」で鏡像にならない
+  // (2026-08-18修正)。他のボーンのpositionは骨格の長さ(体型)であってポーズではないため触らない。
+  // 反転の基準面は回転のミラー(MIRROR_MAP+y,z成分の反転)と同じキャラクターローカルのX=0平面。
+  const hips = bones.hips;
+  if (hips) hips.position.x = -hips.position.x;
 }

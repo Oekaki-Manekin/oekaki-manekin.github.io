@@ -29,6 +29,11 @@ import {
   type SavedPose,
   type PoseLibraryFile,
 } from "../io/poseLibraryStorage";
+import { showToast } from "./Toast";
+
+/** 保存領域が一杯で保存できなかったときの案内。保存経路が複数あるため文言を1箇所にまとめる。 */
+const SAVE_FAILED_MESSAGE =
+  "保存領域が一杯のため保存できませんでした。マイライブラリから不要なポーズを削除してください。";
 
 export interface PoseLibraryCallbacks {
   /** 現在のポーズを取得する(補間・保存の元) */
@@ -139,7 +144,12 @@ export class PoseLibraryPanel {
       const name = nameInput.value.trim() || this.defaultPoseName();
       const pose = this.callbacks.getCurrentPose();
       const thumbnail = this.callbacks.renderThumbnail(pose);
-      addSavedPose({ name, pose, thumbnail });
+      // 保存はサムネイル(dataURL)を含むため容量超過で失敗しうる。失敗を伝えずに
+      // refreshLibrary()すると「保存を押したのに一覧に出ない」だけになる(2026-08-18修正)。
+      if (!addSavedPose({ name, pose, thumbnail })) {
+        showToast(SAVE_FAILED_MESSAGE);
+        return;
+      }
       nameInput.value = "";
       this.refreshLibrary();
     });
@@ -297,7 +307,10 @@ export class PoseLibraryPanel {
     if (!file) return;
     const name = file.name?.trim() || this.defaultPoseName();
     const thumbnail = file.thumbnail || this.callbacks.renderThumbnail(file.pose);
-    addSavedPose({ name, pose: file.pose, thumbnail });
+    if (!addSavedPose({ name, pose: file.pose, thumbnail })) {
+      showToast(SAVE_FAILED_MESSAGE);
+      return;
+    }
     this.refreshLibrary();
   }
 

@@ -28,7 +28,14 @@ import { exportViewportPNG, exportMultiAnglePNG, type ExportCropRect } from "./i
 import { renderPoseThumbnail } from "./io/thumbnailRenderer";
 import { POSE_LIBRARY_FORMAT_VERSION, type PoseLibraryFile } from "./io/poseLibraryStorage";
 import { addSavedCamera, removeSavedCamera, type SavedCameraView } from "./io/savedCameraStorage";
-import { loadAutosave, saveAutosave, startAutosaveLoop, type AutosaveCamera } from "./io/autosave";
+import {
+  AUTOSAVE_KEY,
+  autosaveIsFailing,
+  loadAutosave,
+  saveAutosave,
+  startAutosaveLoop,
+  type AutosaveCamera,
+} from "./io/autosave";
 import { PanelUI, type PanelCallbacks, type CharacterKind } from "./ui/PanelUI";
 import { CanvasFrameOverlay } from "./ui/CanvasFrameOverlay";
 import { EyeLevelLine } from "./ui/EyeLevelLine";
@@ -36,6 +43,7 @@ import { GroundContactIndicator } from "./ui/GroundContactIndicator";
 import { GizmoCoordinateLabel } from "./ui/GizmoCoordinateLabel";
 import { ShortcutHelp } from "./ui/ShortcutHelp";
 import { showConfirmDialog } from "./ui/ConfirmDialog";
+import { isModalOpen } from "./ui/modalState";
 import { showToast } from "./ui/Toast";
 import { BONE_NAMES, type BoneName } from "./config/boneDefs";
 import type { Character } from "./character/Character";
@@ -47,6 +55,10 @@ import { LIMB_EFFECTORS } from "./posing/IkSolver";
 import { applyFingerPreset, captureFingerPose } from "./posing/FingerPoseApplier";
 import { ALL_FINGER_SUFFIXES } from "./config/fingerPresets";
 import { addCustomFingerPreset, removeCustomFingerPreset } from "./io/fingerPresetStorage";
+
+/** localStorageの容量超過で保存できなかったときの案内(明示的なユーザー操作の保存で使う)。 */
+const STORAGE_FULL_MESSAGE =
+  "保存領域が一杯のため保存できませんでした。ポーズライブラリなどから不要なデータを削除してください。";
 
 async function main(): Promise<void> {
   const app = document.getElementById("app")!;
@@ -109,6 +121,28 @@ async function main(): Promise<void> {
   // 作画資料用のクリーンなビュー機能(2026-07-28)で、コントローラー・ギズモを強制的に隠しているか。
   let controlsHidden = false;
 
+  // 何もない場所のダブルクリックでコントローラー・ギズモを一切隠す(作画資料用、2026-07-28ユーザー要望)。
+  // 判定対象は全キャラクター(アクティブ/非アクティブ問わず)+全小物。
+  //
+  // 【重要・生成位置】他のクリック判定(SelectionController / PropController /
+  // CrossCharacterSelector / IkController)より必ず"先に"生成すること。同一要素のpointerupリスナーは
+  // 登録順に走るため、ここが後ろだとクリーンビューの解除がそのクリックの選択判定より遅れる。
+  // VRMのボーン選択マーカーはクリーンビュー中 visible=false で、pickFilter()によりクリック対象から
+  // 外れている。解除が遅れると、VRMの関節をクリックしても解除だけ起きて選択は空振りし、
+  // 「マネキンを一度クリックして解除してからでないとVRMを操作できない」状態になっていた
+  // (2026-08-18、ユーザー報告)。マネキンはpickableMeshes自体が体本体メッシュで隠されないため
+  // 同じ問題が起きず、VRMだけで症状が出ていた。
+  const emptySpaceClickController = new EmptySpaceClickController(
+    sceneManager.renderer.domElement,
+    sceneManager.camera,
+    {
+      // propControllerはこの下で生成されるが、これらのgetterは実際のクリック時にしか呼ばれない。
+      getCharacters: () => characterSlots.map((s) => s.character),
+      getPropObjects: () => propController.list().map((i) => i.object),
+    },
+    () => controlsHidden,
+  );
+
   const selection = new SelectionController(sceneManager.renderer.domElement, sceneManager.camera, activeCharacter);
   const gizmo = new GizmoController(
     sceneManager.camera,
@@ -146,17 +180,6 @@ async function main(): Promise<void> {
     sceneManager.camera,
     () => characterSlots,
     () => activeSlotId,
-  );
-  // 何もない場所のダブルクリックでコントローラー・ギズモを一切隠す(作画資料用、2026-07-28ユーザー要望)。
-  // 判定対象は全キャラクター(アクティブ/非アクティブ問わず)+全小物。
-  const emptySpaceClickController = new EmptySpaceClickController(
-    sceneManager.renderer.domElement,
-    sceneManager.camera,
-    {
-      getCharacters: () => characterSlots.map((s) => s.character),
-      getPropObjects: () => propController.list().map((i) => i.object),
-    },
-    () => controlsHidden,
   );
   const propCoordLabel = new GizmoCoordinateLabel(viewport);
   // 小物パネルの再描画に加え、表示モード(トゥーン調等)・輪郭線対象への追従もここでまとめて行う。
@@ -237,7 +260,40 @@ async function main(): Promise<void> {
   let pinController!: PinController;
   const gazeController = new GazeController();
   let gazeEnabled = false;
+  // 瞳のみカメラに追従させる(首・頭は動かさない)独立トグル。2026-08-17、ユーザー要望により
+  // 既存のgazeEnabled(頭+瞳)から分離して追加。詳細はapplyGazeState()参照。
+  let eyeGazeEnabled = false;
+  // 追従OFFにした瞬間の瞳の角度(yaw/pitch)をVRMキャラクターごとに記憶しておく。
+  // vrm.update()は毎フレーム「humanoid.update()(正規化→生ボーンの反映、瞳を含む全ボーンが
+  // 正規化側の値=無回転へ書き戻される)→lookAt.update()(targetがあれば瞳へ回転を上書き)」の順で
+  // 走るため、targetをnullにしただけだとlookAt側が何もしなくなり、次フレームからhumanoidの書き戻しが
+  // そのまま残って瞳が正面へ戻って見えてしまう(2026-08-17、ユーザー報告)。追従OFFの間は毎フレーム
+  // ここに記憶した角度をlookAt.applier.applyYawPitch()で再適用し、humanoidの書き戻しを上書きし続けることで
+  // 角度を保持する。WeakMapなのでVRMキャラクターが破棄されれば自動的に参照も消える。
+  const frozenGazeAngles = new WeakMap<VrmCharacter, { yaw: number; pitch: number }>();
   let shadingMode: ShadingMode = "normal";
+  // シルエット表示中の小物色変更で「効かない」と誤解されないための案内。1度だけ出す。
+  let silhouetteColorNoticeShown = false;
+
+  /**
+   * ギズモ・ハンドルのドラッグに伴うpointerupがクリックとして再解釈され、選択が暴れるのを防ぐ。
+   * 抑制対象を1箇所にまとめ、ドラッグ元ごとの書き忘れを防ぐ
+   * (pickFilter.tsが「visibleという1つの事実だけを見る」形にしてあるのと同じ理由)。
+   * クリック判定系を追加した場合は必ずここへも足すこと。
+   *
+   * 【呼ぶタイミング】必ずドラッグ「開始」時(TransformControlsのdragging-changedがtrueのとき)に呼ぶ。
+   * dragging-changedはpointerdown/pointerupの最中に発火するが、同じイベントに登録された
+   * リスナーの実行順は登録順で決まるため、終了時に立てても既に処理を終えたクリック判定には
+   * 間に合わない。開始時=pointerdownに立てておけば、続くpointerupでは全系統が確実に抑制される。
+   * また各クリック判定側はフラグの消費を距離判定より先に行うこと(大きくドラッグしたときに
+   * 早期returnでフラグが残り、次の正当なクリックを飲み込むのを防ぐため)。
+   */
+  function suppressNextRaycastAll(): void {
+    selection.suppressNextRaycast();
+    propController.suppressNextRaycast();
+    crossCharacterSelector.suppressNextRaycast();
+    ikController?.suppressNextRaycast();
+  }
 
   function rebuildIkAndPin(character: Character): void {
     if (ikController) {
@@ -255,12 +311,11 @@ async function main(): Promise<void> {
     );
     ikController.setLimitsEnabled(gizmo.getLimitsEnabled());
     ikController.onDragStart(() => history.beginChange());
+    // IKハンドル(特に手首)は小物を持たせた手・隣のキャラの近くに来ることが多く、ドラッグに伴う
+    // クリック誤判定で小物選択やボーン選択が外れたり、キャラが切り替わったりするのを防ぐ。
+    // 抑制はドラッグ開始時に全系統へまとめて立てる(suppressNextRaycastAllのコメント参照)。
+    ikController.onDragStart(() => suppressNextRaycastAll());
     ikController.onDragEnd(() => panel.updateUndoRedoButtons(history.canUndo(), history.canRedo()));
-    // IKハンドル(特に手首)は小物を持たせた手の近くに来ることが多く、ドラッグ終了直後の
-    // クリック誤判定で小物選択が外れるのを防ぐ(propController側のクリック判定も参照)
-    ikController.onDragEnd(() => propController.suppressNextRaycast());
-    // 複数体が近接配置されている場合、ドラッグ終了直後に隣のキャラを誤ってクリック判定しないため
-    ikController.onDragEnd(() => crossCharacterSelector.suppressNextRaycast());
     pinController = new PinController(ikController);
     sceneManager.addOutlineExcludedObject(...ikController.outlineExcludedObjects);
     sceneManager.addControllerObject(...ikController.outlineExcludedObjects);
@@ -299,8 +354,11 @@ async function main(): Promise<void> {
     refreshControlsVisibility();
   }
 
-  // カメラ目線: GazeControllerで頭ボーンをカメラへ向ける(マネキン・VRM共通、アクティブなスロットのみ)。
-  // VRMは加えて目のボーンもvrm.lookAtで追従させ、頭+目でカメラを見る自然な挙動にする。
+  // カメラ目線: GazeControllerで頭ボーンをカメラへ向ける(マネキン・VRM共通、アクティブなスロットのみ、
+  // gazeEnabled)。VRMの目のボーンはvrm.lookAtで別途追従させる(頭とは独立した仕組み)。
+  // 「頭は固定したまま瞳だけカメラを追わせたい」という要望(2026-08-17)に対応するため、
+  // 目の追従はgazeEnabledとeyeGazeEnabledのどちらか一方でも有効なら追従する形にしてある
+  // (両方OFFなら目も固定、gazeEnabledのみなら従来通り頭+目、eyeGazeEnabledのみなら瞳だけ)。
   // 複数体配置では非アクティブなVRMのlookAtは常にnullへ戻す(視線はポージング対象のみに適用する編集補助のため)。
   function applyGazeState(): void {
     gazeController.setEnabled(gazeEnabled);
@@ -308,13 +366,27 @@ async function main(): Promise<void> {
       if (slot.kind !== "vrm") continue;
       const vrmChar = slot.character as VrmCharacter;
       if (!vrmChar.vrm.lookAt) continue;
-      vrmChar.vrm.lookAt.target = gazeEnabled && slot.id === activeSlotId ? sceneManager.camera : null;
+      const eyesFollow = (gazeEnabled || eyeGazeEnabled) && slot.id === activeSlotId;
+      vrmChar.vrm.lookAt.target = eyesFollow ? sceneManager.camera : null;
     }
   }
 
   // VRMのSpringBone(揺れもの)・normalized→raw骨格反映はvrm.update()で毎フレーム行う(全VRMスロット分)
   sceneManager.addTick((dt) => {
-    for (const vrmChar of vrmSlotCharacters()) vrmChar.vrm.update(dt);
+    for (const vrmChar of vrmSlotCharacters()) {
+      vrmChar.vrm.update(dt);
+      const lookAt = vrmChar.vrm.lookAt;
+      if (!lookAt) continue;
+      if (lookAt.target) {
+        // 追従中: 現在の角度を随時記憶しておく(追従OFFになった瞬間の角度が保持対象になる)
+        frozenGazeAngles.set(vrmChar, { yaw: lookAt.yaw, pitch: lookAt.pitch });
+      } else {
+        // 追従OFF: 記憶した角度を毎フレーム再適用し、vrm.update()内のhumanoid.update()による
+        // 正面への書き戻しを上書きし続ける(frozenGazeAnglesの宣言部のコメント参照)
+        const frozen = frozenGazeAngles.get(vrmChar);
+        if (frozen) lookAt.applier.applyYawPitch(frozen.yaw, frozen.pitch);
+      }
+    }
     ikController.syncHandlePositions(activeCharacter);
     pinController.update();
     gazeController.update(activeCharacter, sceneManager.camera, gizmo.getLimitsEnabled());
@@ -390,6 +462,28 @@ async function main(): Promise<void> {
     return { x: cropRect.width / canvas.width, y: cropRect.height / canvas.height };
   }
 
+  // --- 書き出しの排他制御 ---
+  // 書き出し処理は「コントローラーを隠す→描画→戻す」「カメラを動かす→戻す」のように
+  // 一時的に状態を変えて元へ戻す。2本同時に走ると2本目が「すでに変更後の状態」を本来の状態として
+  // 退避してしまい、コントローラーがリロードするまで表示されない・作業中の構図が失われる、という
+  // 壊れ方をする(2026-08-18検出)。多角度書き出しは4〜5方向×250msで1.2〜1.5秒かかるうえ、
+  // 確認ダイアログの二度押しから自然に2本走る動線があった。
+  // SceneManager側にもネスト対応の防御を入れてあるが、本命はここでの排他化。
+  let isExporting = false;
+  async function runExclusiveExport(task: () => Promise<void>): Promise<void> {
+    if (isExporting) return; // 2本目は黙って捨てる
+    isExporting = true;
+    panel.setExportButtonsEnabled(false);
+    try {
+      await task();
+    } catch (err) {
+      showToast(`書き出しに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      isExporting = false;
+      panel.setExportButtonsEnabled(true);
+    }
+  }
+
   function refreshCharacterListUI(): void {
     panel.refreshCharacterList(
       characterSlots.map((s) => ({ id: s.id, kind: s.kind, removable: s.removable, visible: s.character.root.visible })),
@@ -441,26 +535,44 @@ async function main(): Promise<void> {
     setActiveSlot(id);
   }
 
+  // 読み込み中(パース完了前)のVRMの数。上限判定で「これから増える分」として数に含める。
+  // 判定とcharacterSlots.pushの間にawaitがあるため、これが無いと大きいVRMを続けて読み込んだときに
+  // 2つ目が同じ判定を通過してMAX_CHARACTER_SLOTSを超え、しかも同じ位置に重なって出現する
+  // (2026-08-18検出。パースが長いほど窓が広がるため、巨大VRMほど踏みやすい)。
+  let pendingVrmLoads = 0;
+
   async function addVrmSlot(buffer: ArrayBuffer, filename: string): Promise<void> {
-    if (characterSlots.length >= MAX_CHARACTER_SLOTS) {
+    if (characterSlots.length + pendingVrmLoads >= MAX_CHARACTER_SLOTS) {
       showToast(`キャラクターは最大${MAX_CHARACTER_SLOTS}体までです。`);
       return;
     }
-    let loaded: VrmCharacter;
+    pendingVrmLoads++;
+    // 巨大なVRM(60MB程度は珍しくない)はパースの間タブが無反応になるため、読み込み中であることを
+    // 表示し、追加操作自体も受け付けないようにする(無反応の間の再操作が上記の重複追加を誘発する)。
+    panel.setCharacterAddBusy(true);
+    showToast(`VRMを読み込み中です…: ${filename}`);
     try {
-      loaded = await loadVrmCharacter(buffer);
-    } catch (err) {
-      showToast(`VRMの読み込みに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
-      return;
+      let loaded: VrmCharacter;
+      try {
+        loaded = await loadVrmCharacter(buffer);
+      } catch (err) {
+        showToast(`VRMの読み込みに失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
+      // 位置の決定はpushの直前に行う(await後にcharacterSlots.lengthを読むため、予約カウンタと
+      // 併せて逐次的に正しいindexになる)。
+      applySpawnPosition(loaded, characterSlots.length);
+      sceneManager.scene.add(loaded.root);
+      applyShadingMode(loaded, shadingMode);
+      const id = `slot-${nextSlotSeq++}`;
+      characterSlots.push({ id, character: loaded, kind: "vrm", removable: true, bodyShape: DEFAULT_BODY_SHAPE });
+      const versionLabel = loaded.vrm.meta?.metaVersion === "0" ? "VRM 0.x" : loaded.vrm.meta?.metaVersion === "1" ? "VRM 1.0" : null;
+      showToast(`VRMを追加しました: ${filename}${versionLabel ? ` (${versionLabel})` : ""}`);
+      setActiveSlot(id);
+    } finally {
+      pendingVrmLoads--;
+      if (pendingVrmLoads === 0) panel.setCharacterAddBusy(false);
     }
-    applySpawnPosition(loaded, characterSlots.length);
-    sceneManager.scene.add(loaded.root);
-    applyShadingMode(loaded, shadingMode);
-    const id = `slot-${nextSlotSeq++}`;
-    characterSlots.push({ id, character: loaded, kind: "vrm", removable: true, bodyShape: DEFAULT_BODY_SHAPE });
-    const versionLabel = loaded.vrm.meta?.metaVersion === "0" ? "VRM 0.x" : loaded.vrm.meta?.metaVersion === "1" ? "VRM 1.0" : null;
-    showToast(`VRMを追加しました: ${filename}${versionLabel ? ` (${versionLabel})` : ""}`);
-    setActiveSlot(id);
   }
 
   function removeCharacterSlot(id: string): void {
@@ -513,14 +625,15 @@ async function main(): Promise<void> {
     },
     onResetAll() {
       history.beginChange();
-      resetAll(activeCharacter.bones);
+      // 腰の位置もポーズの一部として初期位置へ戻す(restHipsPositionの意味はCharacter.ts参照)。
+      resetAll(activeCharacter.bones, activeCharacter.restHipsPosition);
       refreshInspectorFromSelection();
       panel.updateUndoRedoButtons(history.canUndo(), history.canRedo());
     },
     onResetSelected() {
       if (!selection.current) return;
       history.beginChange();
-      resetSubtree(activeCharacter.bones, selection.current);
+      resetSubtree(activeCharacter.bones, selection.current, activeCharacter.restHipsPosition);
       refreshInspectorFromSelection();
       panel.updateUndoRedoButtons(history.canUndo(), history.canRedo());
     },
@@ -627,26 +740,41 @@ async function main(): Promise<void> {
       }
     },
     onExportPNG(transparent, cropToFrame) {
-      const cropRect = cropToFrame ? canvasFrame.getExportPixelRect(sceneManager.renderer.domElement) : null;
-      exportViewportPNG(sceneManager, transparent, cropRect);
+      void runExclusiveExport(() => {
+        const cropRect = cropToFrame ? canvasFrame.getExportPixelRect(sceneManager.renderer.domElement) : null;
+        return exportViewportPNG(sceneManager, transparent, cropRect);
+      });
     },
-    async onExportMultiAnglePNG(transparent, cropToFrame, includeTop) {
-      // 各方向で全身が収まる位置までカメラを動かしてから書き出す(2026-08-03、ユーザー要望)。
-      // 書き出し中にカメラが動くことを明示し、了承を得てから実行する(キャンセルなら書き出さない)。
-      // 書き出し後は従来通り元の構図へ戻すため、作業中の構図は失われない。
-      const proceed = await showConfirmDialog("カメラを全身が映る位置へ移動します。よろしいですか？");
-      if (!proceed) return;
-      const cropRect = cropToFrame ? canvasFrame.getExportPixelRect(sceneManager.renderer.domElement) : null;
-      const viewportFraction = framingViewportFraction(cropRect);
-      // 「選択されているモデルを中心に」書き出す(2026-08-03、ユーザー要望)。対象は表示中の
-      // 全キャラクターではなく選択中のモデルのみに絞る(activeCharacterFramingTargets参照)。
-      // 注視点(バウンディングボックス中心)・全方向で揃えるカメラ距離はexportMultiAnglePNG側で
-      // 算出する(2026-08-03、ユーザー報告: 前後と左右で書き出し画像のモデルの大きさが揃わない)。
-      const targets = activeCharacterFramingTargets();
-      exportMultiAnglePNG(sceneManager, transparent, cropRect, includeTop, targets, { viewportFraction });
+    onExportMultiAnglePNG(transparent, cropToFrame, includeTop) {
+      void runExclusiveExport(async () => {
+        // 非表示のモデルは「いない扱い」の方針どおり、構図の判断材料にも書き出し対象にもしない。
+        // ここで止めないと、見えていないモデルにカメラをフィットさせて白紙のPNGを4〜5枚
+        // ダウンロードすることになる(2026-08-18修正)。
+        if (!activeCharacter.root.visible) {
+          showToast("選択中のモデルが非表示です。表示してから書き出してください。");
+          return;
+        }
+        // 各方向で全身が収まる位置までカメラを動かしてから書き出す(2026-08-03、ユーザー要望)。
+        // 書き出し中にカメラが動くことを明示し、了承を得てから実行する(キャンセルなら書き出さない)。
+        // 書き出し後は従来通り元の構図へ戻すため、作業中の構図は失われない。
+        const proceed = await showConfirmDialog("カメラを全身が映る位置へ移動します。よろしいですか？");
+        if (!proceed) return;
+        const cropRect = cropToFrame ? canvasFrame.getExportPixelRect(sceneManager.renderer.domElement) : null;
+        const viewportFraction = framingViewportFraction(cropRect);
+        // 「選択されているモデルを中心に」書き出す(2026-08-03、ユーザー要望)。対象は表示中の
+        // 全キャラクターではなく選択中のモデルのみに絞る(activeCharacterFramingTargets参照)。
+        // 注視点(バウンディングボックス中心)・全方向で揃えるカメラ距離はexportMultiAnglePNG側で
+        // 算出する(2026-08-03、ユーザー報告: 前後と左右で書き出し画像のモデルの大きさが揃わない)。
+        const targets = activeCharacterFramingTargets();
+        await exportMultiAnglePNG(sceneManager, transparent, cropRect, includeTop, targets, { viewportFraction });
+      });
     },
     onSaveCameraView(name) {
-      addSavedCamera({ name, ...sceneManager.getCameraState() });
+      // 明示的なユーザー操作の保存は、失敗したら必ず理由を伝える(黙って一覧に出ないのを防ぐ)。
+      if (!addSavedCamera({ name, ...sceneManager.getCameraState() })) {
+        showToast(STORAGE_FULL_MESSAGE);
+        return;
+      }
       panel.refreshSavedCameras();
     },
     onApplyCameraView(view: SavedCameraView) {
@@ -662,8 +790,13 @@ async function main(): Promise<void> {
     },
     async onOpenVrmFile() {
       const opened = await openBinaryFile(".vrm");
-      if (!opened) return;
-      await addVrmSlot(opened.buffer, opened.name);
+      if (!opened.ok) {
+        // キャンセルは無言でよいが、読み込み失敗(破損・ロック・ディスクエラー等)は理由を伝える。
+        // パース失敗はaddVrmSlot側でトーストが出るのに、読み込み失敗だけ無言だった。
+        if (opened.reason === "readError") showToast("ファイルを読み込めませんでした。破損しているか、他のアプリで開かれている可能性があります。");
+        return;
+      }
+      await addVrmSlot(opened.file.buffer, opened.file.name);
     },
     // --- 複数体配置(フェーズ6・(B)) ---
     onSelectCharacterSlot(id) {
@@ -715,6 +848,10 @@ async function main(): Promise<void> {
       gazeEnabled = enabled;
       applyGazeState();
     },
+    onToggleEyeGaze(enabled) {
+      eyeGazeEnabled = enabled;
+      applyGazeState();
+    },
     onApplyPreset(side, preset) {
       history.beginChange();
       applyFingerPreset(gizmo, side, preset);
@@ -723,7 +860,10 @@ async function main(): Promise<void> {
     },
     onSaveCustomPreset(side, label) {
       const rotations = captureFingerPose(gizmo, side, ALL_FINGER_SUFFIXES);
-      addCustomFingerPreset({ id: `custom_${Date.now()}`, label, rotations });
+      if (!addCustomFingerPreset({ id: `custom_${Date.now()}`, label, rotations })) {
+        showToast(STORAGE_FULL_MESSAGE);
+        return;
+      }
       panel.refreshFingerPresets();
     },
     onDeleteCustomPreset(id) {
@@ -851,6 +991,13 @@ async function main(): Promise<void> {
       // 破棄されると、開いているネイティブのカラーピッカーUIが強制的に閉じてしまうため
       // (2026-07-27、ユーザー指摘)。見た目への反映(プレビュー)自体はsetColor()で即座に行われる。
       propController.setColor(id, parseInt(hexString.slice(1), 16));
+      // シルエット表示中は全メッシュが同じ単色で描かれるため、色を変えても画面上は何も変わらない。
+      // 変更自体は保持され通常表示へ戻したときに反映されるので、その旨を一度だけ伝える
+      // (毎回出すとスライダー操作のたびに鳴って邪魔になるため1回きり)。
+      if (shadingMode === "silhouette" && !silhouetteColorNoticeShown) {
+        silhouetteColorNoticeShown = true;
+        showToast("シルエット表示中は色の変化が見えません。通常表示に戻すと反映されます。");
+      }
     },
   };
 
@@ -896,25 +1043,22 @@ async function main(): Promise<void> {
     panel.updateEulerDisplay(euler);
   });
 
-  // ギズモのドラッグ開始時点の状態を履歴に積む。終了直後は小物クリック判定への誤爆も防ぐ
-  // (骨の回転ギズモと小物は手の周辺で近接することが多いため)。
+  // ギズモのドラッグ開始時点の状態を履歴に積む。同時に、このドラッグに伴うクリック判定への
+  // 誤爆も防ぐ(骨の回転ギズモと小物・隣のキャラは画面上で近接することが多いため)。
   gizmo.transformControls.addEventListener("dragging-changed", (event) => {
-    if (event.value) history.beginChange();
-    else {
-      propController.suppressNextRaycast();
-      crossCharacterSelector.suppressNextRaycast();
+    if (event.value) {
+      history.beginChange();
+      suppressNextRaycastAll();
     }
   });
 
   // 小物ギズモのドラッグ開始時点を履歴に積む(ボーンのgizmo.transformControlsと同じ扱い)。
-  // ドラッグ終了直後は、クリックが素通りしてボーン選択のraycastに拾われるのを防ぐ
-  // (GizmoControllerのdragging-changedハンドラでselection.suppressNextRaycast()している対処と同じ理由)。
+  // 抑制も同様に開始時へ寄せる(suppressNextRaycastAllのコメント参照)。
   propController.transformControls.addEventListener("dragging-changed", (event) => {
     if (event.value) {
       history.beginChange();
+      suppressNextRaycastAll();
     } else {
-      selection.suppressNextRaycast();
-      crossCharacterSelector.suppressNextRaycast();
       panel.updateUndoRedoButtons(history.canUndo(), history.canRedo());
     }
   });
@@ -950,13 +1094,30 @@ async function main(): Promise<void> {
       showToast("VRMファイル(.vrm)をドロップしてください。");
       return;
     }
-    file.arrayBuffer().then((buffer) => addVrmSlot(buffer, file.name));
+    file.arrayBuffer().then(
+      (buffer) => addVrmSlot(buffer, file.name),
+      // ドロップされたファイルが読めない場合(破損・ロック等)も理由を伝える。
+      // ファイル選択ダイアログ経由(onOpenVrmFile)と挙動を揃えるため。
+      () => showToast("ファイルを読み込めませんでした。破損しているか、他のアプリで開かれている可能性があります。"),
+    );
   });
 
   // --- キーボードショートカット ---
   window.addEventListener("keydown", (e) => {
     const target = e.target as HTMLElement;
     if (target.tagName === "INPUT") return;
+
+    // モーダル表示中は、モーダル自身を閉じる操作以外を通さない。確認ダイアログの裏でミラーや
+    // 視点プリセットが効いてしまうと、OKを押した時点でユーザーが見ていた状態とは違うシーンが
+    // 書き出される(2026-08-18修正)。起動時の自動保存復元ダイアログ表示中も同様。
+    // ショートカット一覧はHでもEscでも閉じられる必要があるためここで処理する
+    // (確認ダイアログはEscを自前で拾ってキャンセルする。ConfirmDialog.ts参照)。
+    if (isModalOpen()) {
+      if (shortcutHelp.isVisible && (e.key === "Escape" || e.key === "h" || e.key === "H")) {
+        shortcutHelp.hide();
+      }
+      return;
+    }
 
     if (e.ctrlKey && e.key.toLowerCase() === "z" && e.shiftKey) {
       e.preventDefault();
@@ -1032,6 +1193,27 @@ async function main(): Promise<void> {
     camera: getAutosaveCamera(),
     savedAt: new Date().toISOString(),
   }));
+
+  // オートセーブが継続的に失敗している(容量超過等)場合、そのままではタブを閉じた時点で
+  // 作業が失われることにユーザーが最後まで気づけない。1度だけ警告する
+  // (オートセーブ自体は従来どおり静かに失敗させ、アプリの動作は止めない)。
+  let autosaveFailureWarned = false;
+  const autosaveWatchId = window.setInterval(() => {
+    if (autosaveFailureWarned || !autosaveIsFailing()) return;
+    autosaveFailureWarned = true;
+    window.clearInterval(autosaveWatchId);
+    showToast("作業の自動保存に失敗しています。保存領域が一杯の可能性があります(ポーズライブラリの整理をおすすめします)。");
+  }, 3000);
+
+  // 同じツールを2つのタブで開くと、双方のオートセーブが3秒ごとに同じキーを上書きし合い、
+  // 片方の作業が失われる。完全な排他制御はこのツールの性質に対して過剰なので、
+  // 「気づける」状態にすることを優先する(storageイベントは自分以外のタブでのみ発火する)。
+  let multiTabWarned = false;
+  window.addEventListener("storage", (e) => {
+    if (e.key !== AUTOSAVE_KEY || multiTabWarned) return;
+    multiTabWarned = true;
+    showToast("このツールが別のタブでも開かれています。作業内容が上書きされる場合があります。");
+  });
 
   window.addEventListener("beforeunload", () => {
     saveAutosave({

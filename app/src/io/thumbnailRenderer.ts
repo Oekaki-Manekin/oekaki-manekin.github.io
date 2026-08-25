@@ -11,6 +11,14 @@ import { applyPose, type PoseData } from "../posing/PoseSerializer";
 
 const WIDTH = 150;
 const HEIGHT = 190;
+// サムネイルはdataURLのままlocalStorageへ保存され、しかも保存済みポーズ1件の容量の大半を占める
+// (実測: PNG 13,622文字 / 1件全体 15,670文字。localStorageはUTF-16換算で数えられるため実効はこの倍)。
+// PNGのままだとライブラリが数百件で頭打ちになり、保存が無言で失敗する原因になっていた。
+// 実測でJPEG(0.85)はPNGの約30%まで縮み、画素差は平均1.03/255・最大27と、
+// 150×190のサムネでは見分けがつかない水準だったためJPEGを採用する(2026-08-18)。
+// 【後方互換】既存の保存済みサムネはdata:image/pngのdataURLのまま表示できるため、混在して問題ない。
+const THUMBNAIL_MIME = "image/jpeg";
+const THUMBNAIL_QUALITY = 0.85;
 
 interface ThumbContext {
   renderer: THREE.WebGLRenderer;
@@ -49,7 +57,7 @@ function ensureContext(): ThumbContext {
   return ctx;
 }
 
-/** 指定ポーズをマネキンに適用してサムネイルを描画し、PNGのdataURLを返す。 */
+/** 指定ポーズをマネキンに適用してサムネイルを描画し、dataURLを返す(形式はTHUMBNAIL_MIME)。 */
 export function renderPoseThumbnail(pose: PoseData): string {
   const { renderer, scene, camera, mannequin } = ensureContext();
   // 前のポーズが残らないよう一旦初期化してから適用する
@@ -59,5 +67,5 @@ export function renderPoseThumbnail(pose: PoseData): string {
   applyPose(mannequin.bones, pose, { applyHipsPosition: true });
   mannequin.root.updateMatrixWorld(true);
   renderer.render(scene, camera);
-  return renderer.domElement.toDataURL("image/png");
+  return renderer.domElement.toDataURL(THUMBNAIL_MIME, THUMBNAIL_QUALITY);
 }

@@ -72,6 +72,34 @@ export function getBodyMeshes(character: Character): THREE.Mesh[] {
   return meshes;
 }
 
+/**
+ * メッシュの「本来の色」を更新する。表示モードでマテリアルが差し替えられている場合は退避してある
+ * 元マテリアル側を更新し、通常表示へ戻したときに反映されるようにする。
+ *
+ * 【重要】シルエットは全メッシュで共有する単一マテリアル(silhouetteMaterial)のため、そこへ直接
+ * 書き込むとシーン内の全オブジェクトが同じ色に染まり、色を戻す経路が無いためリロードするまで
+ * 直らない(2026-08-18検出。小物のカラーピッカーがmesh.materialを型チェックなしに書き換えており、
+ * MeshBasicMaterialにも.colorがあるためエラーも出さずに成功していた)。
+ * 外部から小物・キャラクターの色を変える処理は必ずこの関数を通すこと。
+ */
+export function setBaseColor(meshes: readonly THREE.Mesh[], hex: number): void {
+  for (const mesh of meshes) {
+    const stored = originalMaterials.get(mesh);
+    const target = stored ?? mesh.material;
+    for (const m of Array.isArray(target) ? target : [target]) {
+      if (m === silhouetteMaterial) continue; // 共有マテリアルには絶対に書かない
+      (m as THREE.Material & { color?: THREE.Color }).color?.setHex(hex);
+    }
+    // 差し替え中(トゥーン)は現在表示されているマテリアルにも反映してプレビューを成立させる。
+    if (stored) {
+      for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        if (m === silhouetteMaterial) continue;
+        (m as THREE.Material & { color?: THREE.Color }).color?.setHex(hex);
+      }
+    }
+  }
+}
+
 function applyShadingModeToMeshes(meshes: THREE.Mesh[], mode: ShadingMode): void {
   for (const mesh of meshes) {
     const previous = mesh.material;

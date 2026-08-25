@@ -99,6 +99,7 @@ export class IkController {
   private dragStartListeners: DragListener[] = [];
   private dragEndListeners: DragListener[] = [];
   private pointerDownPos = { x: 0, y: 0 };
+  private suppressNextClick = false;
   private unsubscribeSelection: () => void;
   // ピン留め中も含め全ハンドルを強制的に隠す(作画資料用のクリーンなビュー要望、2026-07-28)。
   // IKモードのenabled(機能そのものの有効/無効)とは独立した、見た目のみのフラグ。
@@ -290,6 +291,15 @@ export class IkController {
     this.dragEndListeners.push(cb);
   }
 
+  /**
+   * ギズモ・ハンドルのドラッグに伴う余分なクリック判定を1回だけ無視する(他の選択系と同じ理由)。
+   * ハンドルのアタッチはselection.select(null)を伴うため、抑制が漏れるとボーン選択が外れる。
+   * 呼ぶのはドラッグ「開始」時であること(main.tsのsuppressNextRaycastAll参照)。
+   */
+  suppressNextRaycast(): void {
+    this.suppressNextClick = true;
+  }
+
   setLimitsEnabled(enabled: boolean): void {
     this.ikSolver.setLimitsEnabled(enabled);
   }
@@ -434,6 +444,12 @@ export class IkController {
   };
 
   private handlePointerUp = (e: PointerEvent): void => {
+    // 抑制フラグの消費は他のどの判定よりも先に行う。enabled判定や距離判定を先に置くと、
+    // 早期returnでフラグが立ったまま残り、その次の正当なクリックまで飲み込んでしまう。
+    if (this.suppressNextClick) {
+      this.suppressNextClick = false;
+      return;
+    }
     if (!this.enabled) return;
     const dx = e.clientX - this.pointerDownPos.x;
     const dy = e.clientY - this.pointerDownPos.y;

@@ -25,11 +25,16 @@ export function loadSavedCameras(): SavedCameraView[] {
   }
 }
 
-function saveSavedCameras(views: SavedCameraView[]): void {
-  storage.set(KEY, JSON.stringify(views));
+function saveSavedCameras(views: SavedCameraView[]): boolean {
+  return storage.set(KEY, JSON.stringify(views));
 }
 
-export function addSavedCamera(entry: Omit<SavedCameraView, "id" | "createdAt">): SavedCameraView {
+/**
+ * 構図を保存する。保存に成功したかどうかを返す。
+ * 明示的なユーザー操作なので、falseが返ったらUI側で必ず理由を伝えること
+ * (poseLibraryStorage.addSavedPoseと同じ理由)。
+ */
+export function addSavedCamera(entry: Omit<SavedCameraView, "id" | "createdAt">): boolean {
   const saved: SavedCameraView = {
     ...entry,
     id: `camera_${Date.now()}`,
@@ -37,8 +42,7 @@ export function addSavedCamera(entry: Omit<SavedCameraView, "id" | "createdAt">)
   };
   const views = loadSavedCameras();
   views.push(saved);
-  saveSavedCameras(views);
-  return saved;
+  return saveSavedCameras(views);
 }
 
 export function removeSavedCamera(id: string): void {

@@ -47,7 +47,10 @@ export class CrossCharacterSelector {
     this.listeners.push(cb);
   }
 
-  /** 他のTransformControls操作直後の余分なクリック判定を1回だけ無視する(他の選択系と同じ理由)。 */
+  /**
+   * ギズモ・ハンドルのドラッグに伴う余分なクリック判定を1回だけ無視する(他の選択系と同じ理由)。
+   * 呼ぶのはドラッグ「開始」時であること(main.tsのsuppressNextRaycastAll参照)。
+   */
   suppressNextRaycast(): void {
     this.suppressNextClick = true;
   }
@@ -57,13 +60,14 @@ export class CrossCharacterSelector {
   };
 
   private handlePointerUp = (e: PointerEvent): void => {
-    const dx = e.clientX - this.pointerDownPos.x;
-    const dy = e.clientY - this.pointerDownPos.y;
-    if (Math.hypot(dx, dy) > 4) return;
+    // 抑制フラグの消費は他のどの判定よりも先に行う(SelectionControllerと同じ理由)。
     if (this.suppressNextClick) {
       this.suppressNextClick = false;
       return;
     }
+    const dx = e.clientX - this.pointerDownPos.x;
+    const dy = e.clientY - this.pointerDownPos.y;
+    if (Math.hypot(dx, dy) > 4) return;
 
     const slots = this.getSlots();
     if (slots.length < 2) return;
@@ -74,21 +78,36 @@ export class CrossCharacterSelector {
     this.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
 
+    // 【重要】アクティブなキャラも含めて一度にレイキャストし、最前面のヒットがどのスロットに
+    // 属するかで判断する。非アクティブなスロットだけを対象にしてスロット順に見ていくと、
+    // アクティブなキャラの背後に別のキャラが重なっている場合に、手前をクリックしたのに奥のキャラへ
+    // 切り替わってしまう(キャラクターはX軸上に一列に並ぶため、左右の側面ビューでは必ず重なる。
+    // 2026-08-18検出)。
+    const objectToSlotId = new Map<THREE.Object3D, string>();
+    const allTargets: THREE.Object3D[] = [];
     for (const slot of slots) {
-      if (slot.id === activeId) continue;
       // マネキンはpickableMeshes自体が体本体のためgetBodyMeshesと重複するが、Setで統合するので
       // 二重ヒット(同一メッシュへの重複レイキャスト)にはならない。
       const targets = new Set<THREE.Object3D>(slot.character.pickableMeshes);
       for (const mesh of getBodyMeshes(slot.character)) targets.add(mesh);
-      // 非表示にしているキャラクターは「いない扱い」にし、その位置をクリックしても切り替えない
-      // (2026-08-03、ユーザー要望: 透明なのに空中クリックでコントローラーが出るのは不可解)。
-      const hits = this.raycaster.intersectObjects(filterPickable([...targets]), false);
-      if (hits.length > 0) {
-        const boneName = (hits[0].object.userData.boneName as BoneName | undefined) ?? null;
-        for (const cb of this.listeners) cb(slot.id, boneName);
-        return;
+      for (const obj of targets) {
+        objectToSlotId.set(obj, slot.id);
+        allTargets.push(obj);
       }
     }
+
+    // 非表示にしているキャラクターは「いない扱い」にし、その位置をクリックしても切り替えない
+    // (2026-08-03、ユーザー要望: 透明なのに空中クリックでコントローラーが出るのは不可解)。
+    // intersectObjectsは距離の昇順で返す(sort引数の既定がtrue)ため、hits[0]が最前面。
+    const hits = this.raycaster.intersectObjects(filterPickable(allTargets), false);
+    if (hits.length === 0) return;
+
+    const hitSlotId = objectToSlotId.get(hits[0].object);
+    // 最前面がアクティブなキャラなら切替は起こさない(ボーン選択はSelectionControllerに任せる)。
+    if (!hitSlotId || hitSlotId === activeId) return;
+
+    const boneName = (hits[0].object.userData.boneName as BoneName | undefined) ?? null;
+    for (const cb of this.listeners) cb(hitSlotId, boneName);
   };
 
   dispose(): void {

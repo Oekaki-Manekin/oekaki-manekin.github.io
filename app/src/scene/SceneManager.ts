@@ -220,6 +220,8 @@ export class SceneManager {
    */
   private controllerObjects: THREE.Object3D[] = [];
   private controllerPrevVisibility: boolean[] | null = null;
+  /** hideControllersForExport()のネスト深度(hideControllersForExport参照)。 */
+  private controllerHideDepth = 0;
   private outlineEnabled = false;
   // 実線モードをデフォルトにする変更を一度試したが、ユーザー環境で輪郭線が見えない(かつ
   // ギズモ・光源マーカーが誤って表示されつづける別バグも重なった)との報告を受け、
@@ -625,18 +627,31 @@ export class SceneManager {
    * PNG書き出し直前に呼び、ギズモ・IKハンドル・光源マーカー等のコントローラー類を一時的に隠す。
    * 呼び出し前の各オブジェクトの表示状態を記録しておき、restoreControllersVisibility()で正確に
    * 元へ戻す(何も選択されておらずギズモがそもそも非表示、といった状態を書き出し後に誤って
-   * 表示させてしまわないため)。ネスト呼び出しは想定しない(書き出し処理は都度完了を待ってから
-   * 次を呼ぶ)。
+   * 表示させてしまわないため)。
+   *
+   * ネストしても壊れないよう深度で数える。かつては単一フィールドを無条件に上書きしており、
+   * 書き出しが2本同時に走ると2本目が「すでに隠れている状態」を本来の状態として退避してしまい、
+   * リロードするまでコントローラーが表示されなくなっていた(2026-08-18検出)。
+   * 呼び出し側(main.ts)でも書き出しは排他化してあるが、ここは前提そのものを撤廃するための防御。
    */
   hideControllersForExport(): void {
-    this.controllerPrevVisibility = this.controllerObjects.map((o) => o.visible);
+    // 最初の1回だけ本来の状態を退避する。以降のネストは深度を数えるだけ。
+    if (this.controllerHideDepth === 0) {
+      this.controllerPrevVisibility = this.controllerObjects.map((o) => o.visible);
+    }
+    this.controllerHideDepth++;
     for (const o of this.controllerObjects) o.visible = false;
   }
 
   /** hideControllersForExport()で隠したコントローラー類を、書き出し前の表示状態へ正確に戻す。 */
   restoreControllersVisibility(): void {
-    if (!this.controllerPrevVisibility) return;
+    if (this.controllerHideDepth === 0) return;
+    this.controllerHideDepth--;
+    if (this.controllerHideDepth > 0) return; // まだ他の書き出しが進行中
     const prev = this.controllerPrevVisibility;
+    if (!prev) return;
+    // 退避中にrebuildIkAndPin(キャラ切替)でcontrollerObjectsの要素数が変わりうるため、
+    // 添字が対応しない分は表示(true)へ倒す。
     this.controllerObjects.forEach((o, i) => {
       o.visible = prev[i] ?? true;
     });

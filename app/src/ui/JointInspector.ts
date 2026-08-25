@@ -6,6 +6,9 @@ export class JointInspector {
   private titleEl: HTMLElement;
   private inputs: { x: HTMLInputElement; y: HTMLInputElement; z: HTMLInputElement };
   private currentBone: BoneName | null = null;
+  // 入力欄が空・不正なときに「その軸の現在値」として使う直近の確定値。
+  // 選択の切替(setSelected)とギズモ操作の反映(updateValues)でも更新すること。
+  private lastKnownEuler: EulerDeg = { x: 0, y: 0, z: 0 };
   private onBeginEdit: () => void;
   private onChange: (name: BoneName, euler: EulerDeg) => void;
 
@@ -65,11 +68,21 @@ export class JointInspector {
 
   private emitChange(_touchedAxis: keyof EulerDeg): void {
     if (!this.currentBone) return;
-    const euler: EulerDeg = {
-      x: Number(this.inputs.x.value) || 0,
-      y: Number(this.inputs.y.value) || 0,
-      z: Number(this.inputs.z.value) || 0,
+    // 打ち直しの途中(欄を全消しした瞬間、"-"だけ入力した瞬間)に0を適用してしまうと、
+    // その軸のボーンが一瞬0度へ跳ねる(Number("")もNumber("-")も || 0 で0になっていた)。
+    // 不正な入力の間はその軸の現在値を維持する(2026-08-18修正)。
+    const pick = (input: HTMLInputElement, current: number): number => {
+      const raw = input.value.trim();
+      if (raw === "" || raw === "-") return current;
+      const v = Number(raw);
+      return Number.isFinite(v) ? v : current;
     };
+    const euler: EulerDeg = {
+      x: pick(this.inputs.x, this.lastKnownEuler.x),
+      y: pick(this.inputs.y, this.lastKnownEuler.y),
+      z: pick(this.inputs.z, this.lastKnownEuler.z),
+    };
+    this.lastKnownEuler = euler;
     this.onChange(this.currentBone, euler);
   }
 
@@ -85,11 +98,15 @@ export class JointInspector {
       this.inputs.x.value = "";
       this.inputs.y.value = "";
       this.inputs.z.value = "";
+      this.lastKnownEuler = { x: 0, y: 0, z: 0 };
     }
   }
 
   /** ドラッグ中など外部からの角度更新をフォーム表示に反映する(フォーカス中は上書きしない) */
   updateValues(euler: EulerDeg): void {
+    // 表示の上書きはフォーカス中だけ避けるが、「現在値」の記憶は常に最新へ揃える
+    // (打ち直し途中の欄が空でも、他の軸の値は正しく維持されるようにするため)。
+    this.lastKnownEuler = euler;
     if (document.activeElement !== this.inputs.x) this.inputs.x.value = euler.x.toFixed(1);
     if (document.activeElement !== this.inputs.y) this.inputs.y.value = euler.y.toFixed(1);
     if (document.activeElement !== this.inputs.z) this.inputs.z.value = euler.z.toFixed(1);

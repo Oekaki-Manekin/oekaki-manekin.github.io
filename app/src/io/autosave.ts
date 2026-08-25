@@ -2,7 +2,10 @@ import { storage } from "./platform";
 import type { PoseData, PropInstanceData } from "../posing/PoseSerializer";
 import type { BodyShapeParams } from "../config/bodyShapeDefs";
 
-const AUTOSAVE_KEY = "3dposer.autosave.v1";
+// 【変更禁止】旧アプリ名(3Dポーザー)由来のキーだが、変えると既存ユーザーの作業中ポーズが
+// すべて失われるため意図的にこのまま残す(他のstorageキーも同様。BUGFIX-HANDOFF.md B-1)。
+// 他タブの書き込み検知(storageイベント)から参照するためexportしている。
+export const AUTOSAVE_KEY = "3dposer.autosave.v1";
 
 export interface AutosaveCamera {
   position: [number, number, number];
@@ -21,8 +24,25 @@ export interface AutosaveData {
   bodyShape?: BodyShapeParams;
 }
 
-export function saveAutosave(data: AutosaveData): void {
-  storage.set(AUTOSAVE_KEY, JSON.stringify(data));
+// オートセーブの連続失敗回数。1回きりの失敗は無視してよいが、容量超過のように継続して
+// 失敗している状態はユーザーが最後まで気づけないまま作業が失われるため、検知できるようにする。
+let consecutiveFailures = 0;
+// 3回=約9秒連続で失敗していれば一時的な失敗ではないと判断する。
+const FAILING_THRESHOLD = 3;
+
+/** オートセーブを保存する。成功したかどうかを返す(呼び出し側は無視してよい)。 */
+export function saveAutosave(data: AutosaveData): boolean {
+  const ok = storage.set(AUTOSAVE_KEY, JSON.stringify(data));
+  consecutiveFailures = ok ? 0 : consecutiveFailures + 1;
+  return ok;
+}
+
+/**
+ * オートセーブが継続的に失敗しているか。main.tsが監視し、一度だけ警告を出すために使う
+ * (毎回出すと邪魔になるため、通知の回数制御は呼び出し側の責務)。
+ */
+export function autosaveIsFailing(): boolean {
+  return consecutiveFailures >= FAILING_THRESHOLD;
 }
 
 export function loadAutosave(): AutosaveData | null {

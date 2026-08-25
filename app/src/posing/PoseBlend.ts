@@ -2,7 +2,7 @@
 // フェーズ4の (B) ポーズの部分合成 / (C) ポーズ補間 の中核ロジック。
 
 import * as THREE from "three";
-import { BONE_DEFS, BONE_NAMES, type BoneName } from "../config/boneDefs";
+import { BONE_DEFS, BONE_DEF_MAP, BONE_NAMES, type BoneName } from "../config/boneDefs";
 import type { PoseData, BonePoseEntry } from "./PoseSerializer";
 
 /**
@@ -136,7 +136,9 @@ const _qa = new THREE.Quaternion();
 const _qb = new THREE.Quaternion();
 const _qr = new THREE.Quaternion();
 const IDENTITY: [number, number, number, number] = [0, 0, 0, 1];
-const DEFAULT_HIPS: [number, number, number] = [0, 0.92, 0];
+// 片方のポーズにhips位置が無い場合の既定値。ボーン定義を参照して一本化しておく
+// (同じ値を独立に持つと片方だけ更新して食い違う。2026-08-18に定数の二重管理を解消)。
+const DEFAULT_HIPS: readonly [number, number, number] = BONE_DEF_MAP.hips.position;
 
 /**
  * 2つのポーズ a, b を係数 t(0〜1)で補間した新しいポーズを生成する。

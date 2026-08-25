@@ -39,7 +39,10 @@ export class SelectionController {
     return this.selected;
   }
 
-  /** ギズモ操作終了直後の余分なクリック判定を1回だけ無視する */
+  /**
+   * ギズモ・ハンドルのドラッグに伴う余分なクリック判定を1回だけ無視する。
+   * 呼ぶのはドラッグ「開始」時であること(main.tsのsuppressNextRaycastAll参照)。
+   */
   suppressNextRaycast(): void {
     this.suppressNextClick = true;
   }
@@ -62,14 +65,16 @@ export class SelectionController {
   };
 
   private handlePointerUp = (e: PointerEvent): void => {
-    const dx = e.clientX - this.pointerDownPos.x;
-    const dy = e.clientY - this.pointerDownPos.y;
-    // ドラッグ(カメラ操作/ギズモ操作)とクリックを区別する
-    if (Math.hypot(dx, dy) > 4) return;
+    // 抑制フラグの消費は他のどの判定よりも先に行う。距離判定を先に置くと、大きくドラッグした場合に
+    // 早期returnしてフラグが立ったまま残り、その次の正当なクリックまで飲み込んでしまう。
     if (this.suppressNextClick) {
       this.suppressNextClick = false;
       return;
     }
+    const dx = e.clientX - this.pointerDownPos.x;
+    const dy = e.clientY - this.pointerDownPos.y;
+    // ドラッグ(カメラ操作/ギズモ操作)とクリックを区別する
+    if (Math.hypot(dx, dy) > 4) return;
 
     const rect = this.domElement.getBoundingClientRect();
     this.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
