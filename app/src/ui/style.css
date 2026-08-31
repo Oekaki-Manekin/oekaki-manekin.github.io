@@ -5,6 +5,14 @@
      document.documentElement.style.setPropertyで書き換えられる(2026-07-28、ユーザー要望でオレンジ/青の
      切替機能を追加)。個々のルールはこの変数を参照するだけにし、色の実体はここに一本化する。 */
   --accent: #d97a2f;
+
+  /* セクション見出しのシェブロン(▾)の色。開閉状態を色でも示す(2026-08-25、ユーザー要望)。
+     値はPanelUI.tsのACCENT_COLORSと同じオレンジ/青。
+     ※--accentを参照しない理由: --accentはヘッダーのスウォッチでオレンジ⇔青に切り替わるため、
+       参照すると「開＝オレンジ / 閉＝青」の対比自体が消える。ここは固定値で持つ。
+       ACCENT_COLORSの色を変える場合はこの2つも合わせること。 */
+  --chevron-open: #d97a2f;
+  --chevron-closed: #3a7ac0;
 }
 
 * {
@@ -233,8 +241,8 @@ body,
   flex-shrink: 0;
   margin-left: 8px;
   font-size: 36px;
-  color: #888;
-  transition: transform 0.15s ease;
+  color: var(--chevron-open);
+  transition: transform 0.15s ease, color 0.15s ease;
 }
 
 .panel-section--collapsed .panel-section__header {
@@ -243,6 +251,7 @@ body,
 
 .panel-section--collapsed .panel-section__chevron {
   transform: rotate(-90deg);
+  color: var(--chevron-closed);
 }
 
 .panel-section--collapsed .panel-section__body {
