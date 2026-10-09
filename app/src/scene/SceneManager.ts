@@ -128,7 +128,7 @@ class VisibilityTogglePass extends Pass {
   }
 }
 
-// グレースケール表示(フェーズ5)用の輝度変換シェーダー。OutputPass(sRGB変換)より前段、
+// グレースケール表示用の輝度変換シェーダー。OutputPass(sRGB変換)より前段、
 // つまりリニア色空間のバッファに対して変換する(輪郭線パスと同じ経路)。
 const GrayscaleShader = {
   uniforms: { tDiffuse: { value: null } },
@@ -202,7 +202,7 @@ export class SceneManager {
   private rafId = 0;
   private resizeObserver: ResizeObserver;
   private sizeCheckBuf = new THREE.Vector2();
-  // 輪郭線表示(フェーズ5)用のpost-processingパイプライン。
+  // 輪郭線表示用のpost-processingパイプライン。
   // 通常時はrenderer.render()を直接呼ぶ既存経路のまま維持し、輪郭線ON時のみcomposer経由に切り替える
   // (無効時の描画コスト・挙動を変えないため)。
   private composer: EffectComposer;

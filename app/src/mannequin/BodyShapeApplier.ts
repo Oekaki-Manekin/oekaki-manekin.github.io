@@ -26,8 +26,7 @@ type ScaleAxis = "length" | "thickness" | "none";
 // - "length"(頭身スライダー由来): 胴体・脚の縦方向、腕の伸びる方向。
 // - "thickness"(体型ボタン由来): 肩幅・腰幅など横方向の張り出し。
 // - hipsは意図的にこのテーブルに含めない: IK黄ハンドルでユーザーがドラッグした現在位置を
-//   体型変更のたびに書き潰さないための判断(足が浮く/沈む場合は既存の黄ハンドルで調整する運用。
-//   PHASE6-HANDOFF.md§5参照)。
+//   体型変更のたびに書き潰さないための判断(足が浮く/沈む場合は既存の黄ハンドルで調整する運用)。
 const BONE_POSITION_SCALE: Partial<Record<BoneName, [ScaleAxis, ScaleAxis, ScaleAxis]>> = {
   spine: ["none", "length", "none"],
   chest: ["none", "length", "none"],
@@ -106,8 +105,7 @@ function updateCapsuleMesh(
  * ボーン・メッシュのオブジェクト自体は一切作り直さない(IK・選択・小物の持たせ・
  * Undo/Redo履歴が参照しているオブジェクトをそのまま使い続けられるようにするため。
  * IkSolverはボーン間のワールド座標をその都度distanceTo()で計算しており長さを
- * キャッシュしていないため、ここでボーン位置を書き換えるだけでIK側の変更は不要。
- * 詳細はPHASE6-HANDOFF.md§5参照)。
+ * キャッシュしていないため、ここでボーン位置を書き換えるだけでIK側の変更は不要)。
  */
 export function applyBodyShape(mannequin: Mannequin, params: BodyShapeParams): void {
   const lengthScale = computeLengthScale(params.headCount);

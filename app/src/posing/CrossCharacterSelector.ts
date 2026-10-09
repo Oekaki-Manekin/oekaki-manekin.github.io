@@ -12,13 +12,12 @@ export interface CharacterSlotLike {
 type HitListener = (slotId: string, boneName: BoneName | null) => void;
 
 /**
- * 複数体配置(フェーズ6(B))で、非アクティブなキャラクターの体をビュー上で直接クリックしたときに
+ * 複数体配置で、非アクティブなキャラクターの体をビュー上で直接クリックしたときに
  * 「そのキャラへの切替+クリックしたボーンの選択」を1クリックで行うためのクリック判定
  * (2026-07-24、ユーザー要望)。
  * 対象を「非アクティブなキャラのpickableMeshes+体本体メッシュ(getBodyMeshes)」にすることで、
  * アクティブなキャラのボーン選択を担うSelectionController、小物選択を担うPropControllerとは
- * 対象集合が重ならず競合しない(同じ理由でこの3システムが同じdomElementを共有できる設計は
- * PHASE6-HANDOFF.md§6参照)。ボーンマーカー以外(素肌など)がヒットした場合はboneNameがnullになり、
+ * 対象集合が重ならず競合しない(同じ理由で、この3システムは同じdomElementを共有できる)。ボーンマーカー以外(素肌など)がヒットした場合はboneNameがnullになり、
  * 呼び出し側はキャラの切替のみ行う(2026-07-28、ユーザー要望: 関節に関係なくモデルのどこをクリックしても
  * 選択状態にしたい)。
  */

@@ -69,7 +69,7 @@ export interface PanelCallbacks extends FingerPanelCallbacks, PoseLibraryCallbac
   onExportMultiAnglePNG(transparent: boolean, cropToFrame: boolean, includeTop: boolean): void;
   onShowHelp(): void;
   onOpenVrmFile(): void;
-  // --- 複数体配置(フェーズ6・(B)) ---
+  // --- 複数体配置 ---
   onSelectCharacterSlot(id: string): void;
   onAddMannequin(): void;
   onRemoveCharacterSlot(id: string): void;
@@ -272,8 +272,8 @@ export class PanelUI {
     header.appendChild(helpBtn);
     this.element.appendChild(header);
 
-    // --- キャラクター(フェーズ6・(B)複数体配置) ---
-    // 開発指示書上は「2体まで」だったが、事前相談の結果、内部実装はN体対応・UI上限のみ4体とした
+    // --- キャラクター(複数体配置) ---
+    // 当初の計画では「2体まで」だったが、相談の結果、内部実装はN体対応・UI上限のみ4体とした
     // (main.tsのMAX_CHARACTER_SLOTSと合わせる。上限自体はcanAddの形でmain.ts側から渡される)。
     const charSec = section(this.element, "キャラクター");
 
@@ -336,7 +336,7 @@ export class PanelUI {
       rotationEditing = false;
     });
 
-    // --- 体型(フェーズ6(C)、マネキンのみ対象。VRM選択中はsetBodyShapeControlsEnabled(false)で無効化) ---
+    // --- 体型(マネキンのみ対象。VRM選択中はsetBodyShapeControlsEnabled(false)で無効化) ---
     const bodySec = section(this.element, "体型");
 
     const baseRow = document.createElement("div");
@@ -699,7 +699,7 @@ export class PanelUI {
     shadowLabel.appendChild(document.createTextNode("影を表示"));
     lightSec.body.appendChild(shadowLabel);
 
-    // --- 小物(フェーズ6・(A)) ---
+    // --- 小物 ---
     const propSec = section(this.element, "小物");
     this.propPanel = new PropPanel(callbacks);
     propSec.body.appendChild(this.propPanel.element);

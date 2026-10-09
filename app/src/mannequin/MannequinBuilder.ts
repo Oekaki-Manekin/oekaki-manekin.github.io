@@ -143,7 +143,7 @@ export interface SphereShape {
 export type Shape = LimbShape | BoxShape | SphereShape;
 
 // 各ボーンの視覚形状定義（プリミティブのみで構成）
-// 【フェーズ6(C)体型バリエーションで参照】BodyShapeApplier.tsがここを「素の基準値」として
+// 【体型バリエーションで参照】BodyShapeApplier.tsがここを「素の基準値」として
 // 読み取り、頭身・体型パラメータに応じたスケール後の値を都度算出する。この定数自体は不変。
 export const SHAPES: Partial<Record<BoneName, Shape>> = {
   hips: { kind: "box", size: [0.26, 0.16, 0.16], offset: [0, -0.02, 0] },

@@ -1,5 +1,5 @@
-// ブラウザ固有APIへの依存を隔離する薄いラッパー層。
-// 将来Tauri化(フェーズ7)する際は、このファイルの実装をネイティブAPI呼び出しに差し替えるだけで済むようにする。
+// ブラウザ固有のAPI呼び出しをここに集約し、他のモジュールが直接触らないようにする。
+// 差し替えが必要になったときの影響範囲を、このファイルに閉じ込めるため。
 
 export function downloadBlob(filename: string, blob: Blob): void {
   const url = URL.createObjectURL(blob);

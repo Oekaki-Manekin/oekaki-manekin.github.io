@@ -3,7 +3,7 @@ import type { PoseData, PropInstanceData } from "../posing/PoseSerializer";
 import type { BodyShapeParams } from "../config/bodyShapeDefs";
 
 // 【変更禁止】旧アプリ名(3Dポーザー)由来のキーだが、変えると既存ユーザーの作業中ポーズが
-// すべて失われるため意図的にこのまま残す(他のstorageキーも同様。BUGFIX-HANDOFF.md B-1)。
+// すべて失われるため意図的にこのまま残す(他のstorageキーも同様)。
 // 他タブの書き込み検知(storageイベント)から参照するためexportしている。
 export const AUTOSAVE_KEY = "3dposer.autosave.v1";
 
@@ -20,7 +20,7 @@ export interface AutosaveData {
   savedAt: string;
   /** v1保存分にはフィールド自体が無いため任意(読み込み側でundefined→空配列扱いにする)。 */
   props?: PropInstanceData[];
-  /** 体型パラメータ(フェーズ6(C))。旧保存分には無いため任意(読み込み側でundefined→デフォルト値扱い)。 */
+  /** 体型パラメータ。旧保存分には無いため任意(読み込み側でundefined→デフォルト値扱い)。 */
   bodyShape?: BodyShapeParams;
 }
 

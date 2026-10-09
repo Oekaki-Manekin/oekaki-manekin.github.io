@@ -332,7 +332,7 @@ body,
   line-height: 1.4;
 }
 
-/* キャラクタースロット一覧(フェーズ6・(B)複数体配置)。1チップ=1体で、切替・表示切替・削除をまとめる。 */
+/* キャラクタースロット一覧(複数体配置)。1チップ=1体で、切替・表示切替・削除をまとめる。 */
 .character-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -624,7 +624,7 @@ body,
   margin-top: 6px;
 }
 
-/* --- ポーズライブラリ(フェーズ4) --- */
+/* --- ポーズライブラリ --- */
 .pose-parts {
   display: flex;
   flex-wrap: wrap;

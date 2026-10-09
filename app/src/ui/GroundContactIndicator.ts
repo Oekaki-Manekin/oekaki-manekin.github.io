@@ -7,7 +7,7 @@ const FOOT_LABELS: Record<FootEffector, string> = { leftFoot: "左足", rightFoo
 
 // 足首ボーンから足裏(接地面)までの高さの簡易目安値。マネキンの足メッシュは足首ボーンから
 // 約0.06下にあるが、VRMは体型によって実際の足の厚みが異なるため、あくまで概算値として扱う
-// (モデルによっては閾値の意味合いがずれる可能性がある。詳細はPHASE5-HANDOFF.md参照)。
+// (モデルによっては閾値の意味合いがずれる可能性がある)。
 const SOLE_OFFSET_ESTIMATE = 0.05;
 const FLOAT_THRESHOLD = 0.04;
 const SINK_THRESHOLD = 0.04;

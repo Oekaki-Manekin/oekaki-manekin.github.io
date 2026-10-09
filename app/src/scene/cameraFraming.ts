@@ -4,7 +4,7 @@ import { isEffectivelyVisible } from "../posing/pickFilter";
 // 全身が画面に収まる距離を求める共通ロジック(2026-08-03、ユーザー要望)。
 // 起動時の初期カメラ・視点プリセットボタン・多角度PNG書き出しの3経路から共有する。
 // 同じ「収める」計算を経路ごとに書くと片方だけ直して食い違うため、必ずここへ集約すること
-// (PHASE6-HANDOFF-5.md §5「同じジオメトリを2箇所で独立に生成すると片方だけ直して食い違う」と同じ理由)。
+// (「同じものを2箇所で独立に作ると、片方だけ直して食い違う」という、過去に実際に起きた失敗と同じ理由)。
 
 /** フィット時に上下左右へ確保する余白の割合(1.0=ぴったり、1.08=対象サイズの8%ぶん余白)。 */
 const DEFAULT_MARGIN = 1.08;
@@ -51,7 +51,7 @@ export function computeFitDistance(
   options: FitOptions = {},
 ): number | null {
   // レイアウト確定前にSceneManagerが構築されるとaspect、ひいてはsetFocalLength()が逆算するfovが
-  // NaNのまま固定されうる(PHASE6-HANDOFF-5.md §6)。その値で距離を出すと壊れた位置へ飛ぶため弾く。
+  // NaNのまま固定されうる。その値で距離を出すと壊れた位置へ飛ぶため弾く。
   if (!Number.isFinite(camera.fov) || !Number.isFinite(camera.aspect) || camera.aspect <= 0) return null;
 
   _box.makeEmpty();

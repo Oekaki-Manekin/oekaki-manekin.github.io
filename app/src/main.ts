@@ -72,9 +72,9 @@ async function main(): Promise<void> {
   const eyeLevelLine = new EyeLevelLine(viewport);
   const groundContactIndicator = new GroundContactIndicator(viewport);
   const ikCoordLabel = new GizmoCoordinateLabel(viewport);
-  // --- 複数体配置(フェーズ6・(B)) ---
+  // --- 複数体配置 ---
   // 内部はN体対応の配列(characterSlots)として実装し、UI側だけMAX_CHARACTER_SLOTSで上限を設ける
-  // (開発指示書では「2体まで」だったが、事前相談の結果、内部実装はN体対応・UI上限のみ4体とした)。
+  // (当初の計画では「2体まで」だったが、相談の結果、内部実装はN体対応・UI上限のみ4体とした)。
   // slot-1(起動時に生成される最初のマネキン)はオートセーブの対象であり続けるため削除不可とする。
   const MAX_CHARACTER_SLOTS = 4;
   const CHARACTER_SLOT_SPACING = 1.2;
@@ -330,7 +330,7 @@ async function main(): Promise<void> {
   //   (a) 作画資料用のクリーンなビュー(controlsHidden、何もない場所のダブルクリック、2026-07-28)
   //   (b) 操作対象モデル自身の非表示(モデル欄のチェックボックス、2026-08-03)
   // 要因ごとに個別へ書き込むと片方だけ更新して食い違うため、状態は必ずこの関数で毎回再計算する
-  // (PHASE6-HANDOFF-5.md §5「状態リセットは専用関数を経由させ、追跡変数への直接代入を避ける」)。
+  // (原則: 状態リセットは専用関数を経由させ、追跡変数への直接代入を避ける)。
   //
   // 隠す対象はIKハンドル(ピン留め中も含む)と、FKギズモ・ボーン選択・ハイライト
   // (selection.select(null)と同じ経路。GizmoControllerのselection.onSelect購読により連動する)。
@@ -508,7 +508,7 @@ async function main(): Promise<void> {
     applyGazeState();
     syncProps();
     panel.setAvailableBones(slot.kind === "vrm" ? getAvailableBoneSet(activeCharacter) : null);
-    // 体型パラメータはマネキン専用(VRMはモデル側の仕様のため対象外、開発指示書フェーズ6(C)参照)
+    // 体型パラメータはマネキン専用(VRMはモデル側の仕様のため対象外)
     panel.setBodyShapeControlsEnabled(slot.kind === "mannequin");
     if (slot.kind === "mannequin") panel.setBodyShapeDisplay(slot.bodyShape);
     panel.setCharacterRotationDisplay(getCharacterYRotationDeg(activeCharacter));
@@ -798,7 +798,7 @@ async function main(): Promise<void> {
       }
       await addVrmSlot(opened.file.buffer, opened.file.name);
     },
-    // --- 複数体配置(フェーズ6・(B)) ---
+    // --- 複数体配置 ---
     onSelectCharacterSlot(id) {
       setActiveSlot(id);
     },
@@ -816,7 +816,7 @@ async function main(): Promise<void> {
       // 一度だけ呼ぶ」パターンをPanelUI側で行っているため、ここではhistory.beginChange()を呼ばない。
       setCharacterYRotationDeg(deg);
     },
-    // --- 体型(フェーズ6・(C)、マネキンのみ対象) ---
+    // --- 体型(マネキンのみ対象) ---
     onHeadCountChange(value) {
       // スライダーのドラッグ開始はJointInspector.tsと同じ「focus後最初のinputでonBeginEditを
       // 一度だけ呼ぶ」パターンをPanelUI側で行っているため、ここではhistory.beginChange()を呼ばない。
@@ -870,7 +870,7 @@ async function main(): Promise<void> {
       removeCustomFingerPreset(id);
       panel.refreshFingerPresets();
     },
-    // --- ポーズライブラリ(フェーズ4) ---
+    // --- ポーズライブラリ ---
     getCurrentPose() {
       return capturePose(activeCharacter.bones);
     },
@@ -952,7 +952,7 @@ async function main(): Promise<void> {
         return null;
       }
     },
-    // --- 小物(フェーズ6・(A)) ---
+    // --- 小物 ---
     onAddProp(typeId) {
       history.beginChange();
       propController.add(typeId);
