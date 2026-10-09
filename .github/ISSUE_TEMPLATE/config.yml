@@ -1,0 +1,8 @@
+# 「要望」「こうなると嬉しい」などは定型の項目になじまないため、
+# 空白のIssueも開けるようにしておく（報告の敷居を上げないため）。
+blank_issues_enabled: true
+
+contact_links:
+  - name: Xで気軽に報告する
+    url: https://x.com/seihekijikkou
+    about: スクリーンショットを添えてリプライかメンションをどうぞ。GitHubのアカウントは要りません。

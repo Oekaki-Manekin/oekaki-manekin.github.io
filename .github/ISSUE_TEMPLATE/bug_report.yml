@@ -1,0 +1,48 @@
+name: 不具合の報告
+description: うまく動かないところを教えてください
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ご報告ありがとうございます。**わかる範囲で構いません。**
+
+        うまく書けない、スクリーンショットだけ送りたい、という場合は
+        [Xへのリプライ・メンション](https://x.com/seihekijikkou)でも大丈夫です。そちらのほうが気軽です。
+
+        VRMモデルの読み込みに失敗する場合は、**画面に出たエラーメッセージ**と
+        **モデルの入手元**を添えていただけると、原因を追いやすくなります。
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: 何が起きたか / どうすると起きるか
+      description: 操作の順番と、そのとき何が起きたかを書いてください。
+      placeholder: |
+        例）
+        1. マネキンの右手首をクリックして選択する
+        2. IKモードに切り替える
+        3. ハンドルを下へドラッグする
+
+        → 腕が一瞬消えて、マウスを離すと元の位置に戻ってしまう
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: 環境
+      description: ブラウザとOSを教えてください。バージョンまでわかると助かります。
+      placeholder: |
+        例）Chrome 131 / Windows 11
+        例）Edge / macOS
+    validations:
+      required: true
+
+  - type: textarea
+    id: screenshot
+    attributes:
+      label: スクリーンショット（任意）
+      description: この枠に画像をドラッグ&ドロップすると貼り付けられます。短い動画でも構いません。
+    validations:
+      required: false

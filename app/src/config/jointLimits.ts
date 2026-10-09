@@ -1,7 +1,7 @@
 // 関節可動域リミット設定。
 // 「後から人間が調整する値」のためこの1ファイルに集約する。単位は度(degree)。
 // X=屈曲/伸展, Y=外転・内転/回旋(ボーン種により意味が異なる), Z=ひねり。
-// 値は一般的な人体可動域の目安であり、フェーズ1レビューで調整される前提の仮値。
+// 値は一般的な人体可動域の目安をもとに、実際に動かしながら調整したもの。
 
 import { getFingerBoneNames, type BoneName } from "./boneDefs";
 
@@ -19,7 +19,7 @@ export interface JointLimit {
 const deg = (min: number, max: number): AxisLimit => ({ min, max });
 
 // 左右で同じ数値レンジを使う（ローカル軸をミラー生成しているため符号込みで共通化できる）
-// フェーズ1レビューにより全体的に拡張。特に手首・腰(hips/upperLeg)は硬さの指摘を受けて大きく広げた。
+// レビューを経て全体的に拡張。特に手首・腰(hips/upperLeg)は硬さの指摘を受けて大きく広げた。
 export const JOINT_LIMITS: Record<BoneName, JointLimit> = {
   // hipsは「関節」ではなくモデル全体の向きを決めるルートボーン。寝そべり系プリセットは
   // ここを±90回して全身を倒しているため、関節と同じ狭い制限を掛けると成立しない

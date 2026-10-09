@@ -19,7 +19,7 @@ export interface PropInstance {
   readonly typeId: PropTypeId;
   readonly object: THREE.Group;
   attachedTo: Side | null;
-  /** 持たせている場合、対象キャラクターのスロットID(フェーズ6(B)・複数体配置用)。未接続時はnull。 */
+  /** 持たせている場合、対象キャラクターのスロットID(複数体配置用)。未接続時はnull。 */
   attachedCharacterId: string | null;
   /** カラーピッカーで指定した色(全パーツ一括、2026-07-27)。未指定ならnull=propDefsのパーツごとの既定色のまま。 */
   colorOverride: number | null;
@@ -82,7 +82,7 @@ function applyGrip(group: THREE.Group, side: Side, grip: PropGripOffset, correct
 /**
  * 指定ボーンに対応する「実際にシーンへ接続されているノード」を取得する。
  * マネキンはcharacter.bones自体が実ボーンだが、VRMの正規化ボーンはシーンから
- * 独立しているため(PHASE4-HANDOFF§5)、クリック用マーカーの親(=rawボーン)を経由する。
+ * 独立しているため、クリック用マーカーの親(=rawボーン)を経由する。
  * マネキン・VRMどちらもpickableMeshesの各要素にuserData.boneNameが設定されている
  * (MannequinBuilder/VrmLoader)ため、Character interfaceを拡張せずに取得できる。
  */

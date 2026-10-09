@@ -3,8 +3,8 @@ import { BONE_NAMES, type BoneName, type Side } from "../config/boneDefs";
 import type { PropTypeId } from "../config/propDefs";
 import { DEFAULT_BODY_SHAPE, type BodyShapeParams } from "../config/bodyShapeDefs";
 
-// v2: 小物(プロップ)の配置情報(props)を追加(フェーズ6・(A)小物・プロップ)。
-// v3: 体型パラメータ(bodyShape)を追加(フェーズ6・(C)体型バリエーション)。
+// v2: 小物(プロップ)の配置情報(props)を追加(小物・プロップ)。
+// v3: 体型パラメータ(bodyShape)を追加(体型バリエーション)。
 // v1/v2以前のファイルにはこれらが存在しないため、migratePoseFileで既定値を補って読み込む。
 export const CURRENT_FORMAT_VERSION = 3;
 
@@ -20,7 +20,7 @@ export interface PropInstanceData {
   instanceId: string;
   typeId: PropTypeId;
   attachedTo: Side | null;
-  /** 持たせ先キャラクターのスロットID(フェーズ6(B)・複数体配置)。旧バージョンのファイルには存在しない。 */
+  /** 持たせ先キャラクターのスロットID(複数体配置)。旧バージョンのファイルには存在しない。 */
   attachedCharacterId?: string | null;
   position: [number, number, number];
   rotationDeg: [number, number, number];

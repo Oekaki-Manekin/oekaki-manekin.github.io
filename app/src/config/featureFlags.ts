@@ -46,7 +46,7 @@ export type SectionKey =
  */
 export const SECTION_FLAGS: Record<SectionKey, FeatureState> = {
   キャラクター: "public",
-  体型: "public",
+  体型: "locked",
   "カメラ・表示": "public",
   ライティング: "public",
   小物: "public",

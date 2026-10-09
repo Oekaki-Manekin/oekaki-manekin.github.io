@@ -1,5 +1,5 @@
 // ポーズの部分合成(部位指定適用)と補間(2ポーズ間の中間生成)を担当する。
-// フェーズ4の (B) ポーズの部分合成 / (C) ポーズ補間 の中核ロジック。
+// ポーズの部分合成とポーズ補間の中核ロジック。
 
 import * as THREE from "three";
 import { BONE_DEFS, BONE_DEF_MAP, BONE_NAMES, type BoneName } from "../config/boneDefs";

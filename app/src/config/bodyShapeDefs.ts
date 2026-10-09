@@ -1,4 +1,4 @@
-// 体型バリエーション(フェーズ6(C))のパラメータ定義。
+// 体型バリエーションのパラメータ定義。
 // 「後から人間が調整する値」はここに集約する(boneDefs.ts/jointLimits.ts/propDefs.tsと同じ方針)。
 // マネキンのみが対象(VRMはモデル側の仕様のため対象外)。
 
@@ -28,7 +28,7 @@ export const BUILD_ORDER: BodyBuild[] = ["slim", "standard", "sturdy"];
 export const BASE_ORDER: BodyBase[] = ["male", "female", "child"];
 
 // 頭身スライダーの可動範囲。子供プリセット(4.6)を素直に表示・微調整できるよう下限を4まで広げてある
-// (開発指示書上は「6〜8頭身程度」だが、子供プリセットは実際の子供らしさを優先し範囲外まで許容する
+// (当初の想定は「6〜8頭身程度」だが、子供プリセットは実際の子供らしさを優先し範囲外まで許容する
 // 方針をユーザーと合意済み。範囲外を許可する以上、スライダー自体の下限も広げるのが素直なため)。
 export const HEAD_COUNT_RANGE = { min: 4, max: 8, step: 0.1 };
 
@@ -54,8 +54,8 @@ export interface BaseBodyPreset {
   build: BodyBuild;
 }
 
-// 「男性・女性・子供」切り替えは、別のマネキンを持つのではなく、頭身・体型の初期値セットとして扱う
-// (詳細はPHASE6-HANDOFF.md§5参照)。選択後も個別に頭身スライダー・体型ボタンで上書き調整できる。
+// 「男性・女性・子供」切り替えは、別のマネキンを持つのではなく、頭身・体型の初期値セットとして扱う。
+// 選択後も個別に頭身スライダー・体型ボタンで上書き調整できる。
 export const BASE_PRESETS: Record<BodyBase, BaseBodyPreset> = {
   male: { headCount: BASELINE_HEAD_COUNT, build: "standard" },
   female: { headCount: 6.6, build: "slim" },
